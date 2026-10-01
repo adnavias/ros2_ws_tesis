@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot
+  name="Chasis">
+  <link
+    name="Chasis">
+    <inertial>
+      <origin
+        xyz="0.00287143193569343 -4.813753470066E-05 -0.0263492882039757"
+        rpy="0 0 0" />
+      <mass
+        value="40" />
+      <inertia
+        ixx="0.146289539269788"
+        ixy="3.02994365528667E-07"
+        ixz="-1.07213467744308E-05"
+        iyy="0.183011006714277"
+        iyz="1.00631494503253E-06"
+        izz="0.266509383427871" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="-0.396 -0.38 0.114"
+        rpy="1.5708 0 1.5708" />
+      <geometry>
+        <mesh
+          filename="package://mi_rover_description/meshes/Chasis/Chasis.STL" scale="0.001 0.001 0.001" />
+      </geometry>
+      <material
+        name="gris">
+        <color
+          rgba="0.866666666666667 0.909803921568627 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+         xyz="-0.395 -0.38 0.114"
+        rpy="1.5708 0 1.5708" />
+      <geometry>
+        <mesh
+          filename="package://mi_rover_description/meshes/Chasis/Chasis.STL" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+</robot>

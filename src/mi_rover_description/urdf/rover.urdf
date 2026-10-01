@@ -1,0 +1,125 @@
+<?xml version="1.0"?>
+<robot name="mi_rover">
+
+  <material name="azul"><color rgba="0.0 0.0 0.8 1.0"/></material>
+  <material name="negro"><color rgba="0.1 0.1 0.1 1.0"/></material>
+
+  <link name="base_link">
+    <visual>
+      <geometry><box size="0.6 0.4 0.2"/></geometry>
+      <material name="azul"/>
+    </visual>
+    <collision>
+      <geometry><box size="0.6 0.4 0.2"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="5.0"/>
+      <inertia ixx="0.083" ixy="0.0" ixz="0.0" iyy="0.166" iyz="0.0" izz="0.216"/>
+    </inertial>
+  </link>
+
+  <link name="rueda_delantera_derecha">
+    <visual>
+      <geometry><cylinder radius="0.1" length="0.05"/></geometry>
+      <material name="negro"/>
+    </visual>
+    <collision>
+      <geometry><cylinder radius="0.1" length="0.05"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.0027" ixy="0.0" ixz="0.0" iyy="0.0027" iyz="0.0" izz="0.005"/>
+    </inertial>
+  </link>
+  <joint name="union_rueda_delantera_derecha" type="continuous">
+    <parent link="base_link"/>
+    <child link="rueda_delantera_derecha"/>
+    <origin xyz="0.2 -0.22 -0.1" rpy="1.5708 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <link name="rueda_delantera_izquierda">
+    <visual>
+      <geometry><cylinder radius="0.1" length="0.05"/></geometry>
+      <material name="negro"/>
+    </visual>
+    <collision>
+      <geometry><cylinder radius="0.1" length="0.05"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.0027" ixy="0.0" ixz="0.0" iyy="0.0027" iyz="0.0" izz="0.005"/>
+    </inertial>
+  </link>
+  <joint name="union_rueda_delantera_izquierda" type="continuous">
+    <parent link="base_link"/>
+    <child link="rueda_delantera_izquierda"/>
+    <origin xyz="0.2 0.22 -0.1" rpy="1.5708 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <link name="rueda_trasera_derecha">
+    <visual>
+      <geometry><cylinder radius="0.1" length="0.05"/></geometry>
+      <material name="negro"/>
+    </visual>
+    <collision>
+      <geometry><cylinder radius="0.1" length="0.05"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.0027" ixy="0.0" ixz="0.0" iyy="0.0027" iyz="0.0" izz="0.005"/>
+    </inertial>
+  </link>
+  <joint name="union_rueda_trasera_derecha" type="continuous">
+    <parent link="base_link"/>
+    <child link="rueda_trasera_derecha"/>
+    <origin xyz="-0.2 -0.22 -0.1" rpy="1.5708 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <link name="rueda_trasera_izquierda">
+    <visual>
+      <geometry><cylinder radius="0.1" length="0.05"/></geometry>
+      <material name="negro"/>
+    </visual>
+    <collision>
+      <geometry><cylinder radius="0.1" length="0.05"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.0027" ixy="0.0" ixz="0.0" iyy="0.0027" iyz="0.0" izz="0.005"/>
+    </inertial>
+  </link>
+  <joint name="union_rueda_trasera_izquierda" type="continuous">
+    <parent link="base_link"/>
+    <child link="rueda_trasera_izquierda"/>
+    <origin xyz="-0.2 0.22 -0.1" rpy="1.5708 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <gazebo>
+    <plugin filename="gz-sim-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>union_rueda_delantera_derecha</joint_name>
+    </plugin>
+    
+    <plugin filename="gz-sim-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>union_rueda_delantera_izquierda</joint_name>
+    </plugin>
+    
+    <plugin filename="gz-sim-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>union_rueda_trasera_derecha</joint_name>
+    </plugin>
+    
+    <plugin filename="gz-sim-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>union_rueda_trasera_izquierda</joint_name>
+    </plugin>
+	<plugin filename="gz-sim-odometry-publisher-system" name="gz::sim::systems::OdometryPublisher">
+      <odom_frame>odom</odom_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+      <odom_publish_frequency>100</odom_publish_frequency>
+    </plugin>
+
+  </gazebo>
+
+</robot>

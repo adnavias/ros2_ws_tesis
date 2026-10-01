@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="brazo_2">
+
+  <!-- ========================================== -->
+  <!-- LINK BASE DEL BRAZO                        -->
+  <!-- ========================================== -->
+  <link name="base">
+    <inertial>
+      <origin xyz="1.39958423819865E-17 -4.11946375579782E-18 0.00933047710244957" rpy="0 0 0" />
+      <mass value="0.594564150366253" />
+      <inertia ixx="0.00220226641592648" ixy="3.38152256422411E-18" ixz="4.20144212304877E-18" iyy="0.00121595685384765" iyz="-4.68252440232623E-20" izz="0.00341204275167526" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://mi_rover_description/meshes/Brazo/base.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.866666666666667 0.909803921568627 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://mi_rover_description/meshes/Brazo/base.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ========================================== -->
+  <!-- LINK 1                                     -->
+  <!-- ========================================== -->
+  <link name="Link_1">
+    <inertial>
+      <origin xyz="0.00830108225016004 -0.0424137581999083 0.0474326767417051" rpy="0 0 0" />
+      <mass value="1.05857299570185" />
+      <inertia ixx="0.00117937368473566" ixy="0.000121093366641107" ixz="-5.0011054142264E-05" iyy="0.00108030167307535" iyz="0.000222958830256965" izz="0.00122776170114691" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://mi_rover_description/meshes/Brazo/Link_1.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.866666666666667 0.909803921568627 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://mi_rover_description/meshes/Brazo/Link_1.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ========================================== -->
+  <!-- JOINT 1 (BASE GIRATORIA)                   -->
+  <!-- Motor: Brushed DC RS-560 con planetario    -->
+  <!-- ========================================== -->
+  <joint name="Joint_1" type="revolute">
+    <origin xyz="0 0 0.03" rpy="0 0 0" />
+    <parent link="base" />
+    <child link="Link_1" />
+    <axis xyz="0 0 -1" />
+    <!-- velocity=37.7 rad/s (360 RPM), effort=17.45 Nm -->
+    <limit lower="-3.1416" upper="3.1416" effort="17.45" velocity="37.7" />
+    <dynamics damping="1.0" friction="0.05"/>
+  </joint>
+
+  <!-- ========================================== -->
+  <!-- LINK 2                                     -->
+  <!-- ========================================== -->
+  <link name="Link_2">
+    <inertial>
+      <origin xyz="0.000220391421112707 -0.254806409007157 -0.0333451288978256" rpy="0 0 0" />
+      <mass value="0.975920981532861" />
+      <inertia ixx="0.004422283964783726" ixy="-1.56952710811249E-07" ixz="6.90748814042608E-07" iyy="0.000500378936927172" iyz="-6.94997343328116E-05" izz="0.00434360107285825" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://mi_rover_description/meshes/Brazo/Link_2.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.866666666666667 0.909803921568627 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://mi_rover_description/meshes/Brazo/Link_2.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ========================================== -->
+  <!-- JOINT 2 (HOMBRO)                           -->
+  <!-- Motor: BLDC Maxon con planetario 81:1      -->
+  <!-- ========================================== -->
+  <joint name="Joint_2" type="revolute">
+    <origin xyz="0.00625 0.03585 0.0742" rpy="-1.5708 0 0" />
+    <parent link="Link_1" />
+    <child link="Link_2" />
+    <axis xyz="0 0 1" />
+    <!-- velocity=2.69 rad/s (25.6 RPM), effort=45.0 Nm (Límite intermitente) -->
+    <limit lower="-1.5708" upper="1.5708" effort="45.0" velocity="2.69" />
+    <dynamics damping="1.5" friction="0.05"/>
+  </joint>
+
+  <!-- ========================================== -->
+  <!-- LINK 3                                     -->
+  <!-- ========================================== -->
+  <link name="Link_3">
+    <inertial>
+      <origin xyz="0.00963941202063687 0.22529482981309 -0.0257004642867256" rpy="0 0 0" />
+      <mass value="1.38441974915215" />
+      <inertia ixx="0.00469817934353504" ixy="-7.39032612536994E-05" ixz="-6.1207409739754E-10" iyy="0.000705603188859499" iyz="9.4891068778738E-06" izz="0.00493184594226307" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://mi_rover_description/meshes/Brazo/Link_3.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.866666666666667 0.909803921568627 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://mi_rover_description/meshes/Brazo/Link_3.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ========================================== -->
+  <!-- JOINT 3 (CODO)                             -->
+  <!-- Motor: BLDC con Harmonic Drive 80:1        -->
+  <!-- ========================================== -->
+  <joint name="Joint_3" type="revolute">
+    <origin xyz="0 -0.45045 -0.12605" rpy="-3.1416 0 0" />
+    <parent link="Link_2" />
+    <child link="Link_3" />
+    <axis xyz="0 0 -1" />
+    <!-- velocity=5.62 rad/s (53.7 RPM), effort=61.0 Nm (Max Overload Torque) -->
+    <limit lower="-3.1416" upper="3.1416" effort="61.0" velocity="5.62" />
+    <dynamics damping="1.0" friction="0.05"/>
+  </joint>
+
+  <!-- ========================================== -->
+  <!-- LINK 4                                     -->
+  <!-- ========================================== -->
+  <link name="Link_4">
+    <inertial>
+      <origin xyz="1.76664695372697E-09 -0.138606750179293 -0.0118359865270931" rpy="0 0 0" />
+      <mass value="0.581802983405437" />
+      <inertia ixx="0.000825785251805779" ixy="5.80528547944091E-12" ixz="-5.18791287355876E-12" iyy="0.000352010267825656" iyz="-2.10784198231409E-05" izz="0.000702088208596816" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://mi_rover_description/meshes/Brazo/Link_4.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.866666666666667 0.909803921568627 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://mi_rover_description/meshes/Brazo/Link_4.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ========================================== -->
+  <!-- JOINT 4 (MUÑECA)                           -->
+  <!-- Motor: Perfil DC Estándar                  -->
+  <!-- ========================================== -->
+  <joint name="Joint_4" type="revolute">
+    <origin xyz="0.016 0.4295 -0.0771" rpy="3.1416 0 0" />
+    <parent link="Link_3" />
+    <child link="Link_4" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.1416" upper="3.1416" effort="15.0" velocity="30.0" />
+    <dynamics damping="1.0" friction="0.05"/>
+  </joint>
+
+  <!-- ========================================== -->
+  <!-- LINK 5                                     -->
+  <!-- ========================================== -->
+  <link name="Link_5">
+    <inertial>
+      <origin xyz="7.2400814162682E-07 -0.0433430287718577 0.051471065456673" rpy="0 0 0" />
+      <mass value="0.406894631004107" />
+      <inertia ixx="0.00110776348915288" ixy="7.11315522530653E-10" ixz="2.12955056598781E-10" iyy="0.000500975324315308" iyz="-9.82929624587456E-05" izz="0.000691088095582475" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://mi_rover_description/meshes/Brazo/Link_5.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.866666666666667 0.909803921568627 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://mi_rover_description/meshes/Brazo/Link_5.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ========================================== -->
+  <!-- JOINT 5 (ACTUADOR FINAL)                   -->
+  <!-- Motor: Servo Rotación Continua             -->
+  <!-- Nota: type="continuous" no usa lower/upper -->
+  <!-- ========================================== -->
+  <joint name="Joint_5" type="continuous">
+    <origin xyz="0 -0.2475 -0.0057" rpy="1.5708 0 0" />
+    <parent link="Link_4" />
+    <child link="Link_5" />
+    <axis xyz="0 0 1" />
+    <limit effort="6.0" velocity="6.28" />
+    <dynamics damping="0.5" friction="0.01"/>
+  </joint>
+
+</robot>

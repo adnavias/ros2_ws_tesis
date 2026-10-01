@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <xacro:macro name="llanta" params="prefijo x y z roll pitch yaw">
+    <joint name="${prefijo}_wheel_joint" type="continuous">
+      <parent link="Chasis"/>
+      <child link="${prefijo}_wheel_link"/>
+      <origin xyz="${x} ${y} ${z}" rpy="${roll} ${pitch} ${yaw}"/>
+      <axis xyz="0 1 0"/>
+      <dynamics damping="5.0" friction="5.0"/>
+    </joint>
+
+    <link name="${prefijo}_wheel_link">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <mass value="3.0" />
+        <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="1.5708 0 0" />
+        <geometry>
+          <mesh filename="package://mi_rover_description/meshes/Wheel/wheel.STL" />
+        </geometry>
+        <material name="negro_llanta">
+          <color rgba="0.6 0.6 0.6 1.0"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="1.5708 0 0" />
+        <geometry>
+          <mesh filename="package://mi_rover_description/meshes/Wheel/wheel.STL" />
+        </geometry>
+      </collision>
+    </link>
+
+  </xacro:macro>
+</robot>

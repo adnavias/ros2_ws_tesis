@@ -1,0 +1,112 @@
+<?xml version="1.0"?>
+<robot name="mi_rover_tesis" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <!-- INCLUDES PRINCIPALES -->
+  <xacro:include filename="$(find mi_rover_description)/urdf/chasis.urdf" />
+  <xacro:include filename="$(find mi_rover_description)/urdf/wheel.xacro" />
+
+  <!-- LLANTAS -->
+  <xacro:llanta prefijo="delantera_izq" x="0.3937" y="0.315" z="0.15" roll="0" pitch="0" yaw="3.1416" />
+  <xacro:llanta prefijo="delantera_der" x="0.3937" y="-0.315" z="0.15" roll="0" pitch="0" yaw="0" />
+  <xacro:llanta prefijo="trasera_izq" x="-0.3437" y="0.315" z="0.15" roll="0" pitch="0" yaw="3.1416" />
+  <xacro:llanta prefijo="trasera_der" x="-0.3437" y="-0.315" z="0.15" roll="0" pitch="0" yaw="0" />
+
+  <!-- INCLUIR EL BRAZO -->
+  <xacro:include filename="$(find mi_rover_description)/urdf/brazo.urdf" />
+
+  <!-- UNION FIJA CHASIS-BRAZO -->
+  <joint name="chasis_a_brazo_joint" type="fixed">
+    <parent link="Chasis"/> 
+    <child link="base"/> 
+    <origin xyz="0.22 0.0 0.475" rpy="0 0 0"/>
+  </joint>
+
+  <!-- SENSOR IMU -->
+  <gazebo>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+  </gazebo>
+  <gazebo reference="Chasis">
+    <sensor name="sensor_imu_chasis" type="imu">
+      <always_on>true</always_on>
+      <update_rate>50</update_rate>
+      <topic>/imu_data</topic>
+      <gz_frame_id>Chasis</gz_frame_id>
+    </sensor>
+  </gazebo>
+
+  <!-- PLUGIN DE CONDUCCIÓN DIFFERENCIAL -->
+  <gazebo>
+    <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+      <left_joint>delantera_izq_wheel_joint</left_joint>
+      <left_joint>trasera_izq_wheel_joint</left_joint>
+      <right_joint>delantera_der_wheel_joint</right_joint>
+      <right_joint>trasera_der_wheel_joint</right_joint>
+      <wheel_separation>0.63</wheel_separation>
+      <wheel_radius>0.15</wheel_radius>
+      <topic>/cmd_vel</topic>
+    </plugin>
+  </gazebo>
+
+  <!-- PUBLICADOR DE ESTADOS -->
+  <gazebo>
+    <plugin filename="gz-sim-joint-state-publisher-system" name="gz::sim::systems::JointStatePublisher">
+      <update_rate>50</update_rate>
+      <joint_name>Joint_1</joint_name>
+      <joint_name>Joint_2</joint_name>
+      <joint_name>Joint_3</joint_name>
+      <joint_name>Joint_4</joint_name>
+      <joint_name>Joint_5</joint_name>
+    </plugin>
+  </gazebo>
+
+  <!-- POSTURA INICIAL DEL BRAZO (se aplica una sola vez, sin control) -->
+  <gazebo>
+    <plugin filename="mi_rover_initial_pose" name="mi_rover::InitialJointPositions">
+      <joint name="Joint_1">3.1415</joint>
+      <joint name="Joint_2">-1.5707</joint>
+      <joint name="Joint_3">0.0</joint>
+      <joint name="Joint_4">0.0</joint>
+    </plugin>
+  </gazebo>
+
+<!-- CONTROL DE TORQUE PURO PARA J1, J2, J3 -->
+  <gazebo>
+    <plugin filename="gz-sim-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>Joint_1</joint_name>
+    </plugin>
+    <plugin filename="gz-sim-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>Joint_2</joint_name>
+    </plugin>
+    <plugin filename="gz-sim-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>Joint_3</joint_name>
+    </plugin>
+    <plugin filename="gz-sim-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>Joint_4</joint_name>
+    </plugin>
+    <plugin filename="gz-sim-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>Joint_5</joint_name>
+    </plugin>
+  </gazebo>
+
+  <!-- FRICCIÓN DE LAS LLANTAS (Para que el rover se ancle al piso) -->
+  <gazebo reference="delantera_izq_wheel">
+    <mu1>1.5</mu1>
+    <mu2>1.5</mu2>
+  </gazebo>
+
+  <gazebo reference="delantera_der_wheel">
+    <mu1>1.5</mu1>
+    <mu2>1.5</mu2>
+  </gazebo>
+
+  <gazebo reference="trasera_izq_wheel">
+    <mu1>1.5</mu1>
+    <mu2>1.5</mu2>
+  </gazebo>
+
+  <gazebo reference="trasera_der_wheel">
+    <mu1>1.5</mu1>
+    <mu2>1.5</mu2>
+  </gazebo>
+
+</robot>

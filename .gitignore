@@ -1,0 +1,10 @@
+build/
+install/
+log/
+__pycache__/
+*.pyc
+.vscode/
+*.swp
+*:Zone.Identifier
+*.bak
+*.zip
