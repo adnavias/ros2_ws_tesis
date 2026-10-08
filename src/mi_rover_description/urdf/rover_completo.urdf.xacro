@@ -49,8 +49,11 @@
 
   <!-- PUBLICADOR DE ESTADOS -->
   <gazebo>
+    <!-- 200 Hz = frecuencia del lazo ADRC. A 50 Hz la medición llega con
+         hasta 20 ms de retraso y el lazo (observador a 50 rad/s) se vuelve
+         inestable, sobre todo con el brazo estirado. -->
     <plugin filename="gz-sim-joint-state-publisher-system" name="gz::sim::systems::JointStatePublisher">
-      <update_rate>50</update_rate>
+      <update_rate>200</update_rate>
       <joint_name>Joint_1</joint_name>
       <joint_name>Joint_2</joint_name>
       <joint_name>Joint_3</joint_name>

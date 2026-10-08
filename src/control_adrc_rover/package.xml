@@ -3,13 +3,22 @@
 <package format="3">
   <name>control_adrc_rover</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Control ADRC del brazo del rover (tesis de maestría)</description>
   <maintainer email="medina@todo.todo">medina</maintainer>
   <license>TODO: License declaration</license>
 
   <depend>rclpy</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>rcl_interfaces</depend>
+
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>pinocchio</exec_depend>
+  <exec_depend>mi_rover_description</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

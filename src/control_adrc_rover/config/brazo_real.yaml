@@ -1,0 +1,144 @@
+# =====================================================================
+# Parámetros del controlador ADRC del brazo — ROBOT REAL (Jetson)
+# Orden de los arreglos: [J1, J2, J3, J4, J5]
+#
+# Con `colcon build --symlink-install` basta con editar este archivo y
+# relanzar:  ros2 launch control_adrc_rover brazo_sim.launch.py
+# IMPORTANTE: escribe siempre los números con punto decimal (5.0, no 5);
+# ROS 2 rechaza un entero donde se declaró un double.
+# Simulación: brazo_adrc.yaml (sim:=true). Robot real: brazo_real.yaml
+# (sim:=false). Al pasar a la Jetson normalmente sólo cambia la sección
+# INTERFAZ ROS de abajo.
+# =====================================================================
+# =====================================================================
+# INTERFAZ ROS — lo ÚNICO que normalmente cambia entre Gazebo y la Jetson
+#
+#   objetivo [°] ──┐
+#   estado  [rad] ─┴─> adrc_simple ──> mando (J1-J4 [A], J5 [N·m])
+#
+# Para descubrir los nombres reales en la Jetson:
+#   ros2 topic list                      (tópicos existentes)
+#   ros2 topic info -v <tópico>          (tipo de mensaje y QoS)
+#   ros2 topic echo --once <tópico>      (nombres dentro del JointState)
+# =====================================================================
+
+# --- Mando: compartido por adrc_simple y actuador_sim (/** = todos) ---
+/**:
+  ros__parameters:
+    # Nombres de las articulaciones en el URDF (modelo de Pinocchio).
+    nombres_urdf: ["Joint_1", "Joint_2", "Joint_3", "Joint_4", "Joint_5"]
+    # Formato del mando:
+    #  "float64_por_articulacion": un std_msgs/Float64 por articulación,
+    #                              en los tópicos de `topicos_mando`.
+    #  "float64_multiarray": un std_msgs/Float64MultiArray [J1..J5] en
+    #                        `topico_mando_unico`.
+    #  "joint_state": un sensor_msgs/JointState (campo effort) en
+    #                 `topico_mando_unico`, con los nombres de
+    #                 `nombres_en_mando`.
+    tipo_mando: "float64_por_articulacion"   # <-- AJUSTAR
+    topicos_mando: ["/brazo/Joint_1/cmd_actuador", "/brazo/Joint_2/cmd_actuador",
+                    "/brazo/Joint_3/cmd_actuador", "/brazo/Joint_4/cmd_actuador",
+                    "/brazo/Joint_5/cmd_actuador"]   # <-- AJUSTAR
+    topico_mando_unico: "/brazo/cmd_actuador"   # <-- AJUSTAR
+    nombres_en_mando: ["Joint_1", "Joint_2", "Joint_3", "Joint_4", "Joint_5"]   # <-- AJUSTAR
+
+adrc_simple:
+  ros__parameters:
+
+    # ---------------- Interfaz: entradas ----------------
+    # Posición medida (sensor_msgs/JointState, en rad).
+    topico_estado: "/joint_states"   # <-- AJUSTAR
+    # Nombre de cada articulación DENTRO de ese mensaje, en orden J1..J5.
+    nombres_en_estado: ["Joint_1", "Joint_2", "Joint_3", "Joint_4", "Joint_5"]   # <-- AJUSTAR
+    # true si el publicador usa QoS "best effort" (común en drivers y
+    # micro-ROS). Si no llega nada, revisa con `ros2 topic info -v`.
+    qos_estado_best_effort: false   # <-- AJUSTAR
+    # Sentido de giro: -1.0 invierte medición y mando de esa articulación
+    # (cuando el motor/encoder gira al revés que el URDF).
+    signo_articulacion: [1.0, 1.0, 1.0, 1.0, 1.0]   # <-- AJUSTAR
+    # Objetivos (vacío "" = desactivado).
+    topico_objetivo_deg: "/brazo/objetivo_deg"     # Float64MultiArray [°]
+    topico_objetivo_rad: "/target_joint_states"    # JointState [rad]
+
+    # ---------------- Lazo ----------------
+    frecuencia_control: 200.0          # [Hz]
+
+    # ---------------- Cero articular ----------------
+    # true : el cero (0,0,0,0,0) es la postura de la primera medición.
+    # false: el cero es offsets_cero [rad].
+    cero_desde_primera_medicion: true
+    offsets_cero: [3.1415, -1.5707, 0.0, 0.0, 0.0]
+    # true : la medición ya está en la convención del URDF (Gazebo, o
+    #        encoders absolutos). false: encoders incrementales; el modelo
+    #        usa q_modelo = q_medida + postura_encendido_urdf.
+    medicion_absoluta: true
+    postura_encendido_urdf: [3.1415, -1.5707, 0.0, 0.0, 0.0]
+
+    # ---------------- Ganancias ADRC (GPI) ----------------
+    # Sintonía elegida comparando variantes en una simulación del brazo
+    # (Pinocchio, sin inercia de rotor, medición a 200 Hz, zona muerta i0).
+    # Con modo "completa" cada articulación queda como doble integrador
+    # desacoplado, por eso la misma sintonía sirve en J1-J4.
+    wn:   [10.0, 10.0, 10.0, 10.0, 1.0]   # frecuencia natural [rad/s]
+    eps:  [0.2, 0.2, 0.2, 0.2, 0.2]       # wp = wn/eps = 50 rad/s
+    zeta: [1.5, 1.0, 1.0, 1.5, 1.0]       # amortiguamiento
+
+    # ---------------- Modelo de inercia (inversa de B) ----------------
+    # "constante": tau = J_hat v              (J_hat = inercia_constante)
+    # "diagonal" : tau = diag(M(q)) v         (b0 programado por postura)
+    # "completa" : tau = M(q) v               (desacoplamiento MIMO)
+    # Si Pinocchio no está instalado se usa "constante" automáticamente.
+    modo_inercia: "completa"
+    # Articulaciones que usan M(q); las demás usan inercia_constante y no
+    # se acoplan. J5 (servo, sin modelo de su reductor) queda fuera.
+    usar_modelo: [true, true, true, true, false]
+    # Inercia constante [kg m^2] (antes era 1.0 en todas). Valores medios
+    # aproximados = brazo + armadura.
+    inercia_constante: [1.5, 2.0, 1.3, 0.83, 1.0]
+    # Armadura = J_rotor * N^2 [kg m^2], se suma a la diagonal de M(q).
+    # SIMULACIÓN: 0.0, porque Gazebo NO simula la inercia de los rotores; si
+    # el modelo la incluye y la planta no, el control queda mal escalado
+    # (sobre todo estirado, donde M(q) está muy acoplada).
+    # ROBOT REAL: usar los valores de brazo_real.yaml:
+    #   Maxon: (832 + 8.4) g cm^2 * 100^2 = 0.840
+    #   Yellow Jacket: ~3e-6 kg m^2 (SUPUESTO) * 509^2 = 0.777
+    armadura: [0.777, 0.840, 0.840, 0.777, 0.0]
+    # URDF del brazo para Pinocchio. Vacío = share/mi_rover_description/
+    # urdf/brazo.urdf
+    urdf_brazo: ""
+    feedforward_gravedad: true         # suma g(q) al mando
+    feedforward_aceleracion: true      # usa q*'' en v
+
+    # ---------------- Actuadores ----------------
+    # Constante de par estimada en la articulación [N m/A] (J5: 1 = torque)
+    k_tau_hat: [3.75, 3.94, 3.94, 3.75, 1.0]
+    # Límite del mando: J1-J4 corriente [A], J5 torque [N m]
+    #  Maxon: min(9.34 A continua, 27 N m del reductor -> 7.35 A)
+    #  Yellow Jacket: 70 % de la continua del Maxon = 6.54 A (es el 71 %
+    #    de su corriente de bloqueo; bájalo a 2-3 A para el hardware real)
+    # Yellow Jacket: valor conservador para hardware (6.54 A es el 71 % de su
+    # corriente de bloqueo y lo quemaría en continuo).
+    limite_mando: [2.5, 7.35, 7.35, 2.5, 2.0]
+    # Corriente en vacío de cada motor [A]: se suma i0*sgn(i) para vencer
+    # la fricción interna (zona muerta). J5 (servo): 0.
+    corriente_vacio: [0.25, 0.497, 0.497, 0.25, 0.0]
+    ancho_comp_friccion: 0.1           # [A] suavizado de sgn() con tanh
+    # La trayectoria se alarga si su corriente nominal supera esta fracción
+    # del límite (deja margen al ADRC para corregir).
+    margen_corriente_trayectoria: 0.9
+
+    # ---------------- Trayectoria ----------------
+    v_max_fisica: [1.23, 3.67, 3.67, 1.23, 6.28]   # [rad/s] (URDF)
+    a_max_100pct: [2.0, 3.0, 3.0, 2.0, 5.0]        # [rad/s^2] al 100 %
+    # 100 % = factor_100pct * v_max_fisica. Con 0.5, el 200 % es el límite
+    # físico de los motores (tope permitido).
+    factor_100pct: 0.5
+    # % usado si el comando no trae 6.º valor. Se puede cambiar en vivo:
+    #   ros2 param set /adrc_simple velocidad_pct_defecto 30.0
+    velocidad_pct_defecto: 50.0
+    velocidad_pct_min: 1.0
+    duracion_minima: 0.5               # [s]
+
+    # ---------------- Diagnóstico ----------------
+    publicar_diagnostico: false        # ~/error_deg, ~/state, ~/reference
+    periodo_log: 0.0                   # [s] 0 = apagado

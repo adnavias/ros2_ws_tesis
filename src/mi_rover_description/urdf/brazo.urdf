@@ -55,15 +55,19 @@
 
   <!-- ========================================== -->
   <!-- JOINT 1 (BASE GIRATORIA)                   -->
-  <!-- Motor: Brushed DC RS-560 con planetario    -->
+  <!-- Motor: goBILDA Yellow Jacket 50.9:1 (12 V) -->
+  <!--        + tornillo sin fin 10:1 (supuesto) -->
+  <!-- SIN LÍMITES DE POSICIÓN (continuous).      -->
   <!-- ========================================== -->
-  <joint name="Joint_1" type="revolute">
+  <joint name="Joint_1" type="continuous">
     <origin xyz="0 0 0.03" rpy="0 0 0" />
     <parent link="base" />
     <child link="Link_1" />
     <axis xyz="0 0 -1" />
-    <!-- velocity=37.7 rad/s (360 RPM), effort=17.45 Nm -->
-    <limit lower="-3.1416" upper="3.1416" effort="17.45" velocity="37.7" />
+    <!-- velocity: 117 RPM / 10 = 1.23 rad/s                         -->
+    <!-- effort: par de bloqueo 6.71 N·m x 10 x 0.5 = 33.6 N·m        -->
+    <!-- (tope físico; el límite de uso lo pone la corriente en el control) -->
+    <limit effort="33.6" velocity="1.23" />
     <dynamics damping="1.0" friction="0.05"/>
   </joint>
 
@@ -95,15 +99,18 @@
 
   <!-- ========================================== -->
   <!-- JOINT 2 (HOMBRO)                           -->
-  <!-- Motor: BLDC Maxon con planetario 81:1      -->
+  <!-- Motor: Maxon EC 60 flat 642221 (24 V)      -->
+  <!--        + GSW 62 A 867073 (strain wave 100:1) -->
+  <!-- SIN LÍMITES DE POSICIÓN (continuous).      -->
   <!-- ========================================== -->
-  <joint name="Joint_2" type="revolute">
+  <joint name="Joint_2" type="continuous">
     <origin xyz="0.00625 0.03585 0.0742" rpy="-1.5708 0 0" />
     <parent link="Link_1" />
     <child link="Link_2" />
     <axis xyz="0 0 1" />
-    <!-- velocity=2.69 rad/s (25.6 RPM), effort=45.0 Nm (Límite intermitente) -->
-    <limit lower="-1.5708" upper="1.5708" effort="45.0" velocity="2.69" />
+    <!-- velocity: 3500 RPM (máx. entrada continua) / 100 = 3.67 rad/s -->
+    <!-- effort: 37 N·m (máx. par intermitente del GSW 62 A)            -->
+    <limit effort="37.0" velocity="3.67" />
     <dynamics damping="1.5" friction="0.05"/>
   </joint>
 
@@ -135,15 +142,17 @@
 
   <!-- ========================================== -->
   <!-- JOINT 3 (CODO)                             -->
-  <!-- Motor: BLDC con Harmonic Drive 80:1        -->
+  <!-- Motor: Maxon EC 60 flat 642221 (24 V)      -->
+  <!--        + GSW 62 A 867073 (strain wave 100:1) -->
   <!-- ========================================== -->
   <joint name="Joint_3" type="revolute">
     <origin xyz="0 -0.45045 -0.12605" rpy="-3.1416 0 0" />
     <parent link="Link_2" />
     <child link="Link_3" />
     <axis xyz="0 0 -1" />
-    <!-- velocity=5.62 rad/s (53.7 RPM), effort=61.0 Nm (Max Overload Torque) -->
-    <limit lower="-3.1416" upper="3.1416" effort="61.0" velocity="5.62" />
+    <!-- velocity: 3500 RPM (máx. entrada continua) / 100 = 3.67 rad/s -->
+    <!-- effort: 37 N·m (máx. par intermitente del GSW 62 A)            -->
+    <limit lower="-3.1416" upper="3.1416" effort="37.0" velocity="3.67" />
     <dynamics damping="1.0" friction="0.05"/>
   </joint>
 
@@ -175,14 +184,16 @@
 
   <!-- ========================================== -->
   <!-- JOINT 4 (MUÑECA)                           -->
-  <!-- Motor: Perfil DC Estándar                  -->
+  <!-- Motor: goBILDA Yellow Jacket 50.9:1 (12 V) -->
+  <!--        + tornillo sin fin 10:1 (supuesto) -->
   <!-- ========================================== -->
   <joint name="Joint_4" type="revolute">
     <origin xyz="0.016 0.4295 -0.0771" rpy="3.1416 0 0" />
     <parent link="Link_3" />
     <child link="Link_4" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.1416" upper="3.1416" effort="15.0" velocity="30.0" />
+    <!-- velocity: 1.23 rad/s; effort: 33.6 N·m (igual que J1) -->
+    <limit lower="-3.1416" upper="3.1416" effort="33.6" velocity="1.23" />
     <dynamics damping="1.0" friction="0.05"/>
   </joint>
 
