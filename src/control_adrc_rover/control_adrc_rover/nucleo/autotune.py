@@ -235,12 +235,24 @@ class Autotune:
         self.etapa = 'calculando parámetros'
         yield
         k_obj = float(cfg['k_objetivo'])
+        calibradas = []
         for nom, g in zip(self.nombres, self.g):
             arm_nom = float(c.armadura[g]) if c.armadura[g] > 0 else (
                 c.cfg.articulacion(nom).armadura_nominal)
             if not c.cfg.lazo['incluir_armadura']:
                 arm_nom = 0.0
-            res = identificar(muestras[nom], arm_nom)
+            try:
+                res = identificar(muestras[nom], arm_nom)
+            except ValueError as exc:
+                # una articulación mal identificada no tumba a las demás:
+                # se deja como estaba y se reporta
+                self.resultados[nom] = {
+                    'error': str(exc),
+                    'nota': 'sin cambios (datos insuficientes o ruidosos; '
+                            'típico de una articulación muy ligera)'}
+                self.log(f'Autotune {nom}: {exc}; se deja sin cambios')
+                continue
+            calibradas.append(nom)
             beta = elegir_beta(res.alfa, res.sigma_alfa, k_obj)
             alfa_anterior = float(c.alfa[g])
             c.alfa[g] = res.alfa
@@ -273,6 +285,8 @@ class Autotune:
         margen = float(cfg['margen_wn'])
         dt = c.dt_nominal
         for nom, g, k in zip(self.nombres, self.g, self.k):
+            if nom not in calibradas:
+                continue
             forma = c.gpi.polos[g] / c.gpi.polos[g].min()
             wn = float(c.gpi.polos[g].min())
             wn_falla = None
@@ -314,7 +328,13 @@ class Autotune:
                 None if wn_falla is None else round(wn_falla, 2))
             self.log(f'Autotune {nom}: wn final {wn_final:.2f} rad/s '
                      f'(oscila en {wn_falla})')
-        self._terminar(True, 'Autotuning terminado', restaurar=False)
+        sin = [n for n in self.nombres if n not in calibradas]
+        if not calibradas:
+            raise AbortoAutotune('ninguna articulación se pudo identificar')
+        texto = 'Autotuning terminado'
+        if sin:
+            texto += f' (sin cambios en {", ".join(sin)}: ver resultados)'
+        self._terminar(True, texto, restaurar=False)
         yield
 
     def _reducir_corriente(self, g: int) -> None:

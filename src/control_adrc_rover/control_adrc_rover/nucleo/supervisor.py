@@ -16,15 +16,18 @@ que sobreestima la inercia) o de retardos. Si kappa es bajo (modelo que
 subestima la inercia), el amortiguamiento no depende de wn y el supervisor
 lo avisa para que se recalibre (autotune) en lugar de seguir bajando.
 
-Estimación de kappa. Con buen seguimiento q'' ≈ q*'' y v ≈ q*'' - phi_hat;
-de q'' = kappa v + d se obtiene
+Estimación de kappa (por movimiento). Con buen seguimiento q'' ≈ q*'',
+y la planta cumple q'' = kappa v + d, así que durante un movimiento
 
-    phi_hat ≈ (1 - 1/kappa) q*'' + d/kappa,
+    q*'' ≈ kappa v + d,
 
-así que una regresión lineal de phi_hat contra q*'' (con término
-constante para d lento) da la pendiente s y kappa = 1/(1 - s). Se usa
-mínimos cuadrados recursivos con olvido y sólo se actualiza cuando la
-aceleración de referencia es significativa.
+y la pendiente de la regresión de q*'' contra v (con término constante)
+es kappa. Sólo se acepta si el movimiento excitó lo suficiente (q*'' con
+desviación estándar ≥ `std_min`) y el ajuste es bueno (R² ≥ `r2_min`); si
+no, se reporta NaN ("sin datos suficientes"). En movimientos lentos las
+perturbaciones (gravedad que cambia con la postura, fricción) dominan a
+v y kappa no es identificable: por eso casi siempre aparece NaN salvo en
+movimientos rápidos. El autotuning es la forma confiable de calibrar.
 
 Autor: Adán Medina Covarrubias
 """
@@ -114,6 +117,24 @@ class Supervisor:
             f'({r.sobreimpulso_pct:.1f} %), {r.cruces} cruces -> wn '
             f'{wn_actual:.2f} -> {nuevo:.2f} rad/s')
         return nuevo / wn_actual
+
+
+def estimar_kappa_lote(qdd_ref: np.ndarray, v: np.ndarray,
+                       std_min: float = 0.5, r2_min: float = 0.6) -> float:
+    """kappa de un movimiento (NaN si no hay excitación o el ajuste es malo)."""
+    qdd_ref = np.asarray(qdd_ref, dtype=float)
+    v = np.asarray(v, dtype=float)
+    if qdd_ref.size < 50 or np.std(qdd_ref) < std_min or np.std(v) < 1e-6:
+        return float('nan')
+    a = np.column_stack([v, np.ones_like(v)])
+    theta, *_ = np.linalg.lstsq(a, qdd_ref, rcond=None)
+    pred = a @ theta
+    ss_res = float(np.sum((qdd_ref - pred) ** 2))
+    ss_tot = float(np.sum((qdd_ref - qdd_ref.mean()) ** 2))
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+    if r2 < r2_min or theta[0] <= 0.0:
+        return float('nan')
+    return float(theta[0])
 
 
 class EstimadorKappa:

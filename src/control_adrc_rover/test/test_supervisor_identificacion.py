@@ -76,3 +76,13 @@ def test_beta_cubre_incertidumbre():
     assert elegir_beta(1.0, 0.0) == pytest.approx(1.0)
     assert elegir_beta(1.0, 0.1) == pytest.approx(1 / 1.2)
     assert elegir_beta(1.0, 2.0) == pytest.approx(0.6)
+
+
+def test_kappa_por_movimiento():
+    from control_adrc_rover.nucleo.supervisor import estimar_kappa_lote
+    rng = np.random.default_rng(4)
+    v = 2.0 * np.sin(np.linspace(0, 6, 400)) + 0.3
+    qdd = 1.3 * v + 0.2 + 0.02 * rng.standard_normal(v.size)
+    assert estimar_kappa_lote(qdd, v) == pytest.approx(1.3, rel=0.02)
+    # sin excitación: NaN
+    assert np.isnan(estimar_kappa_lote(0.01 * v, v))

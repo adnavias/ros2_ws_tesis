@@ -49,7 +49,7 @@ from .modelo import ModeloBrazo, calibrar, escalar_beta
 from .seguridad import (EstimadorVelocidad, LimitadorPendiente,
                         SanidadEncoder, aceleracion_pared, validar_objetivo)
 from .shaper import ReferenciaConformada, duracion_minima_modo
-from .supervisor import EstimadorKappa, Supervisor, analizar
+from .supervisor import Supervisor, analizar, estimar_kappa_lote
 from .trayectoria import TrayectoriaNonica
 
 ESTADOS_CONTROL = ('esperando_medicion', 'deshabilitado', 'habilitado',
@@ -193,7 +193,7 @@ class Controlador:
 
         # --- Supervisor, kappa y registro de phi_hat ---
         self.supervisor = Supervisor(cfg.supervisor)
-        self.kappa_est = EstimadorKappa(len(gpi_arts))
+        self.kappa = np.full(len(gpi_arts), np.nan)
         self.registro_phi: deque = deque(maxlen=int(20.0 / self.dt_nominal))
         self.t_fin_movimiento: Optional[float] = None
 
@@ -317,7 +317,6 @@ class Controlador:
         self.sanidad.reiniciar()
         self.vel.reiniciar()
         self.pendiente.reiniciar()
-        self.kappa_est.reiniciar()
         self._mov = None
         # integradores: la primera corriente es la de gravedad
         self.gpi.reiniciar(self._v_gravedad())
@@ -680,9 +679,13 @@ class Controlador:
     def _post_paso(self, t: float, cmd: np.ndarray) -> None:
         phi = self.gpi.phi_hat()
         kg = self.k_gpi
-        self.kappa_est.actualizar(self.qdd_d[kg], phi)
         self.registro_phi.append((t, phi.copy()))
         mov = self._mov
+        if mov is not None and not mov['grabando']:
+            u = getattr(self, '_ultimo', None)
+            if u is not None:
+                mov.setdefault('acel', []).append(
+                    (self.qdd_d[kg].copy(), u['v'].copy()))
         if mov is not None:
             if not mov['grabando'] and t >= mov['t_fin']:
                 mov['grabando'] = True
@@ -698,7 +701,13 @@ class Controlador:
 
     def _evaluar_movimiento(self, mov: dict) -> None:
         qs = np.array(mov['muestras'])
-        kappas = self.kappa_est.kappa()
+        acel = mov.get('acel') or []
+        if acel:
+            qdd = np.array([a[0] for a in acel])
+            vv = np.array([a[1] for a in acel])
+            for g in range(len(self.k_gpi)):
+                self.kappa[g] = estimar_kappa_lote(qdd[:, g], vv[:, g])
+        kappas = self.kappa
         for g, k in enumerate(self.k_gpi):
             if abs(mov['qf'][k] - mov['q0'][k]) < 1e-4:
                 continue
@@ -770,7 +779,7 @@ class Controlador:
         d.phi_hat = np.full(n, np.nan)
         d.phi_hat[self.k_gpi] = self.gpi.phi_hat()
         d.kappa = np.full(n, np.nan)
-        d.kappa[self.k_gpi] = self.kappa_est.kappa()
+        d.kappa[self.k_gpi] = self.kappa
         d.saturaciones = np.zeros(n, dtype=int)
         d.saturaciones[self.k_gpi] = self.saturaciones
         d.saturado = np.zeros(n, dtype=bool)
