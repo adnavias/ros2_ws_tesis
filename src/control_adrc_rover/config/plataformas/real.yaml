@@ -1,0 +1,76 @@
+# =====================================================================
+# PLATAFORMA: ROBOT REAL (Jetson)
+#
+# Se aplica ENCIMA del perfil del brazo. Ajusta las líneas marcadas
+# "# <-- AJUSTAR" con lo que veas en la Jetson:
+#   ros2 topic list
+#   ros2 topic info -v <tópico>          (tipo y QoS)
+#   ros2 topic echo --once <tópico>      (nombres de articulaciones)
+# Números siempre con punto decimal.
+# =====================================================================
+plataforma: real
+
+interfaz:
+  topico_estado: "/joint_states"                 # <-- AJUSTAR
+  qos_estado_best_effort: false                  # <-- AJUSTAR (micro-ROS: true)
+  tipo_mando: "float64_por_articulacion"         # <-- AJUSTAR
+  patron_topico_mando: "/brazo/{articulacion}/cmd_actuador"   # <-- AJUSTAR
+  topico_mando_unico: "/brazo/cmd_actuador"      # <-- AJUSTAR (multiarray / joint_state)
+  topico_objetivo_deg: "/brazo/objetivo_deg"
+  topico_objetivo_nombres_deg: "/brazo/objetivo_nombres_deg"
+  topico_objetivo_rad: "/target_joint_states"
+  topico_heartbeat: "/brazo/interfaz/heartbeat"
+  topico_imu: ""                                 # p. ej. "/imu_data" cuando haya IMU
+  # Si el driver no llena header.stamp, se usa la hora de llegada.
+  usar_stamp_medicion: true
+
+# ---------------------------------------------------------------------
+# ENCODERS. Por defecto INCREMENTALES: leen 0 al encender y el modelo usa
+#   q_urdf = signo * q_medida + postura_encendido_urdf
+# (la postura física al encender está en el perfil del brazo). Para un
+# encoder ABSOLUTO cambia `encoder` de esa articulación a "absoluto" y, si
+# su cero no coincide con el del URDF, pon `offset_absoluto` [rad]:
+#   q_urdf = signo * q_medida + offset_absoluto
+# ---------------------------------------------------------------------
+por_defecto:
+  encoder: "incremental"                         # <-- AJUSTAR por articulación
+  signo: 1.0
+
+articulaciones:
+  Joint_1:
+    signo: 1.0                                   # <-- AJUSTAR (-1.0 si gira al revés)
+    nombre_en_estado: "Joint_1"                  # <-- AJUSTAR (nombre en el JointState)
+    nombre_en_mando: "Joint_1"                   # <-- AJUSTAR
+    limite_mando: 2.5                            # [A] Yellow Jacket (seguro)
+    # encoder: "absoluto"
+    # offset_absoluto: 0.0
+  Joint_2:
+    signo: 1.0                                   # <-- AJUSTAR
+    nombre_en_estado: "Joint_2"                  # <-- AJUSTAR
+    nombre_en_mando: "Joint_2"                   # <-- AJUSTAR
+  Joint_3:
+    signo: 1.0                                   # <-- AJUSTAR
+    nombre_en_estado: "Joint_3"                  # <-- AJUSTAR
+    nombre_en_mando: "Joint_3"                   # <-- AJUSTAR
+  Joint_4:
+    signo: 1.0                                   # <-- AJUSTAR
+    nombre_en_estado: "Joint_4"                  # <-- AJUSTAR
+    nombre_en_mando: "Joint_4"                   # <-- AJUSTAR
+    limite_mando: 2.5
+  Joint_5:
+    nombre_en_mando: "Joint_5"                   # <-- AJUSTAR
+    unidad_posicion: "rad"                       # <-- AJUSTAR (rad | deg)
+
+lazo:
+  incluir_armadura: true      # el robot real sí tiene la inercia de los rotores
+
+seguridad:
+  watchdog_congelar: 0.02     # [s] (4 muestras a 200 Hz)
+  watchdog_quitar: 0.10       # [s] corriente cero (falla)
+  heartbeat_timeout: 0.5      # [s] sólo en modo calibración
+  paro_accion: "sin_corriente"
+
+diagnostico:
+  publicar: true
+  frecuencia: 50.0
+  periodo_log: 0.1

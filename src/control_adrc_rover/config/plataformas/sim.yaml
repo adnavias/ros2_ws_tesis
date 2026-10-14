@@ -1,0 +1,73 @@
+# =====================================================================
+# PLATAFORMA: SIMULACIÓN (Gazebo Fortress)
+#
+# Se aplica ENCIMA del perfil del brazo (config/brazos/<brazo>.yaml).
+# Aquí sólo va lo que cambia entre Gazebo y el robot real.
+# Números siempre con punto decimal.
+# =====================================================================
+plataforma: sim
+
+interfaz:
+  # Posición medida que publica Gazebo (puente ros_gz_bridge) [rad]
+  topico_estado: "/world/empty/model/mi_rover/joint_state"
+  qos_estado_best_effort: false
+  # Mando: un Float64 por articulación ({articulacion} = nombre_en_mando)
+  tipo_mando: "float64_por_articulacion"
+  patron_topico_mando: "/brazo/{articulacion}/cmd_actuador"
+  topico_mando_unico: "/brazo/cmd_actuador"
+  # Torque hacia Gazebo (lo usa actuador_sim)
+  patron_topico_fuerza: "/model/mi_rover/joint/{articulacion}/cmd_force"
+  # Objetivos ("" desactiva)
+  topico_objetivo_deg: "/brazo/objetivo_deg"
+  topico_objetivo_nombres_deg: "/brazo/objetivo_nombres_deg"
+  topico_objetivo_rad: "/target_joint_states"
+  topico_heartbeat: "/brazo/interfaz/heartbeat"
+  # IMU del chasis (gazebo.launch.py la puentea a /imu_data, 50 Hz); se
+  # usa sólo para estimar el modo de la base. "" la desactiva.
+  topico_imu: "/imu_data"
+  # El header.stamp de Gazebo es tiempo simulado: el lazo sigue a Gazebo
+  # aunque corra más lento que el tiempo real.
+  usar_stamp_medicion: true
+
+por_defecto:
+  # Gazebo publica la posición ya en la convención del URDF.
+  encoder: "absoluto"
+  signo: 1.0
+
+articulaciones:
+  # En Gazebo el servo J5 sí reporta posición (no hace falta para el
+  # control, pero se puede activar para comparar).
+  Joint_5:
+    medida: false
+  # Límites de los Yellow Jacket en simulación (en el robot real 2.5 A).
+  Joint_1:
+    limite_mando: 6.54
+  Joint_4:
+    limite_mando: 6.54
+
+lazo:
+  # Gazebo NO simula la inercia de los rotores: el modelo del control no
+  # debe incluir la armadura en simulación.
+  incluir_armadura: false
+
+seguridad:
+  # Gazebo en WSL puede tener pausas; umbrales más holgados que en el robot.
+  watchdog_congelar: 0.05     # [s] congela integradores, sostiene gravedad
+  watchdog_quitar: 0.5        # [s] corriente cero (falla)
+  heartbeat_timeout: 1.0      # [s] sólo en modo calibración
+
+diagnostico:
+  publicar: true
+  frecuencia: 50.0
+  periodo_log: 0.0
+
+# Parámetros SÓLO de la planta simulada (actuador_sim). Cambia aquí los
+# motores "reales" para probar la robustez, p. ej.:
+#   motores: {yellow_jacket_sinfin: {eficiencia_sinfin: 0.4}}
+actuador_sim:
+  motores: {}
+  servo_kp: 20.0
+  servo_kd: 1.0
+  servo_torque_max: 2.0
+  sostener_no_activas: true
+  timeout_mando: 0.1

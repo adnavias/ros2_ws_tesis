@@ -1,0 +1,161 @@
+# =====================================================================
+# PERFIL DEL BRAZO PRINCIPAL (5 GDL) — física y articulaciones
+#
+# Este archivo describe el BRAZO (URDF, motores, límites, ganancias). Lo
+# que cambia entre Gazebo y el robot real (tópicos, encoders, signos,
+# límites de prueba) va en config/plataformas/sim.yaml o real.yaml, que
+# se aplican ENCIMA de este archivo. Los resultados del autotuning y lo
+# que se guarde desde la interfaz van en config/autotune_principal.yaml,
+# que se aplica al final.
+#
+# Para agregar otro brazo: copia este archivo como brazos/<nombre>.yaml,
+# cambia `nombre`, `urdf` y la sección `articulaciones`, y lánzalo con
+#   ros2 launch control_adrc_rover brazo.launch.py brazo:=<nombre>
+#
+# REGLAS: números con punto decimal (5.0, no 5). El orden de
+# `articulaciones` es el orden de los objetivos [J1, J2, ...].
+# =====================================================================
+
+nombre: principal
+urdf: "package://mi_rover_description/urdf/brazo.urdf"
+
+# ---------------------------------------------------------------------
+# Motores. K_tau = k_t_caja * relacion_sinfin * eficiencia_sinfin [N·m/A]
+#          armadura = inercia_rotor * (relacion_caja * relacion_sinfin)^2
+# Los valores marcados SUPUESTO deben verificarse con datos reales.
+# ---------------------------------------------------------------------
+motores:
+  yellow_jacket_sinfin:
+    # Yellow Jacket 5203, 50.9:1 a 12 V: 6.71 N·m de bloqueo, 9.2 A de
+    # bloqueo, 0.25 A en vacío -> 6.71/(9.2-0.25) = 0.7497 N·m/A en la caja.
+    k_t_caja: 0.7497
+    relacion_caja: 50.9
+    relacion_sinfin: 10.0        # SUPUESTO
+    eficiencia_sinfin: 0.5       # SUPUESTO
+    inercia_rotor: 3.0e-6        # [kg m^2] SUPUESTO -> armadura ≈ 0.777
+    corriente_vacio: 0.25        # [A]
+    corriente_bloqueo: 9.2       # [A]
+    corriente_continua: 6.54     # [A] tope absoluto para el límite (sim)
+  maxon_ec60_gsw62:
+    # Maxon EC 60 flat 642221 (24 V) + strain wave GSW 62 A 100:1:
+    # Kt 52.5 mN·m/A * 100 * eficiencia 0.75 = 3.9375 N·m/A.
+    k_t_caja: 3.9375
+    relacion_caja: 100.0
+    relacion_sinfin: 1.0
+    eficiencia_sinfin: 1.0
+    inercia_rotor: 8.404e-5      # (832 + 8.4) g cm^2 -> armadura ≈ 0.840
+    corriente_vacio: 0.497       # [A]
+    corriente_bloqueo: 83.2      # [A]
+    corriente_continua: 9.34     # [A] corriente continua del motor
+    par_continuo_salida: 27.0    # [N·m] par continuo del reductor
+
+# ---------------------------------------------------------------------
+# Valores comunes a todas las articulaciones (cada una puede cambiarlos)
+# ---------------------------------------------------------------------
+por_defecto:
+  estado: "activa"               # activa | bloqueada | ausente
+  mando: "corriente_con_modelo"  # corriente_con_modelo | torque_sin_modelo | posicion_directa
+  # Polos del lazo GPI (rad/s), los 4 reales: p(s) = Π (s + λi).
+  # [wn, wn, 4 wn, 4 wn] con wn = 8: sin sobreimpulso y estable para
+  # 0.15 < kappa < ~3 con 1-2 muestras de retardo (ver la guía, sec. 10.3).
+  polos: [8.0, 8.0, 32.0, 32.0]
+  beta: 1.0                      # control con beta * M (beta <= 1)
+  ancho_friccion: 0.1            # [A] suavizado de la compensación
+  pendiente_max: 200.0           # [A/s] límite de pendiente del mando
+  margen_limite: 0.05            # [rad] pared virtual antes del límite URDF
+  salto_max: 0.5                 # [rad] salto máximo creíble por muestra
+
+articulaciones:
+  Joint_1:                       # base giratoria
+    motor: "yellow_jacket_sinfin"
+    limite_mando: 2.5            # [A]
+    v_max_fisica: 1.23           # [rad/s]
+    a_max_100pct: 2.0            # [rad/s^2]
+    postura_encendido_urdf: 3.1415
+  Joint_2:                       # hombro
+    motor: "maxon_ec60_gsw62"
+    # 27 N·m / 3.9375 N·m/A = 6.86 A (antes 7.35 A, que con este K_tau
+    # daba 28.9 N·m y superaba el par continuo del reductor).
+    limite_mando: 6.85
+    v_max_fisica: 3.67
+    a_max_100pct: 3.0
+    postura_encendido_urdf: -1.5707
+  Joint_3:                       # codo
+    motor: "maxon_ec60_gsw62"
+    limite_mando: 6.85
+    v_max_fisica: 3.67
+    a_max_100pct: 3.0
+    postura_encendido_urdf: 0.0
+  Joint_4:                       # muñeca
+    motor: "yellow_jacket_sinfin"
+    limite_mando: 2.5
+    v_max_fisica: 1.23
+    a_max_100pct: 2.0
+    postura_encendido_urdf: 0.0
+  Joint_5:                       # actuador final (servo)
+    mando: "posicion_directa"    # se le manda la posición objetivo
+    medida: false                # el servo no reporta posición
+    unidad_posicion: "rad"       # rad | deg (lo que espere el driver)
+    v_max_fisica: 6.28
+    a_max_100pct: 5.0
+    posicion_bloqueo: 0.0        # postura con la que entra al modelo
+
+# ---------------------------------------------------------------------
+# Lazo, trayectoria, seguridad (la plataforma puede cambiarlos)
+# ---------------------------------------------------------------------
+lazo:
+  frecuencia_control: 200.0      # [Hz] debe coincidir con la medición
+  referencia_objetivos: "relativa_arranque"   # o "urdf"
+  feedforward_gravedad: true
+  feedforward_aceleracion: true
+  rampa_gravedad: 1.0            # [s] la gravedad entra en rampa
+  factor_inercia_sup: 1.25       # cota alta de M para revisar trayectorias
+  factor_gravedad_sup: 1.15      # cota alta de g para revisar trayectorias
+  margen_corriente_trayectoria: 0.9
+  modelo_friccion: "zona_muerta" # zona_muerta (como actuador_sim) | velocidad
+
+trayectoria:
+  factor_100pct: 0.5             # 100 % = 0.5 * v_max_fisica
+  velocidad_pct_defecto: 50.0
+  velocidad_pct_min: 1.0
+  duracion_minima: 0.5           # [s]
+  objetivo_fuera_de_rango: "recortar"   # recortar | rechazar
+
+seguridad:
+  paro_accion: "sin_corriente"   # sin_corriente | congelar
+  error_max_deg: 30.0            # error de seguimiento que dispara falla
+
+shaper:
+  tipo: "ninguno"                # ninguno | zv | zvd | ei
+  frecuencia_hz: 2.0             # modo de la base (estimar con estimar_modo)
+  amortiguamiento: 0.05
+  tolerancia_ei: 0.05
+  ciclos_modo_min: 1.0           # duración mínima = ciclos / frecuencia
+
+supervisor:
+  habilitado: true
+  umbral_sobreimpulso_deg: 0.5
+  umbral_sobreimpulso_pct: 2.0
+  cruces_max: 2
+  factor_reduccion: 0.85
+  wn_min: 2.0
+  ventana: 1.5                   # [s] asentamiento observado
+
+autotune:
+  factor_corriente: 0.6          # fracción del límite durante el autotune
+  amplitud_deg: 4.0              # amplitud de los movimientos de prueba
+  velocidad_pct: 60.0
+  repeticiones: 3
+  error_aborto_deg: 8.0
+  k_objetivo: 1.0
+  paso_wn: 1.25
+  wn_max: 20.0
+  margen_wn: 0.35                # queda 35 % abajo del wn que oscila
+  amplitud_wn_deg: 2.0
+  # Posturas de identificación en URDF [rad] (q2 = 0 vertical hacia
+  # arriba, q2 = -1.5707 horizontal hacia adelante). Las articulaciones que
+  # no aparecen se quedan donde están. VERIFICA que no choquen con el rover.
+  posturas:
+    retraida:  {Joint_2: -1.5707, Joint_3: 2.2}    # plegado sobre la base
+    media:     {Joint_2: -1.0, Joint_3: 1.0}       # efector arriba
+    extendida: {Joint_2: -1.5707, Joint_3: 0.0}    # horizontal (máx. gravedad)
