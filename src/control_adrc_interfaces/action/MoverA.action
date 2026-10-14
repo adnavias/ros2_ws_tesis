@@ -1,0 +1,12 @@
+# Mueve el brazo a un objetivo en grados (coordenadas del usuario).
+string[] nombres           # vacío = todas las activas, en orden
+float64[] posiciones_deg   # NaN = conservar
+float64 velocidad_pct      # <= 0 = velocidad por defecto
+---
+bool exito
+string mensaje
+float64[] error_final_deg
+float64[] sobreimpulso_deg
+---
+float64 progreso           # 0..1 (tiempo de la trayectoria)
+float64[] error_deg

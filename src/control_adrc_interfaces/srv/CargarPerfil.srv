@@ -1,0 +1,8 @@
+# Cambia el perfil de brazo y/o el estado de las articulaciones.
+# El nodo pasa por deactivate -> cleanup -> configure -> activate.
+string brazo          # "" = conservar el perfil actual
+int32 montadas        # N > 0: monta las N primeras, el resto ausente; 0 = según el perfil
+string estados        # "Joint_2=ausente,Joint_3=bloqueada" ("" = sin cambios extra)
+---
+bool exito
+string mensaje
