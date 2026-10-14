@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Control del brazo</title>
+<link rel="stylesheet" href="/web/app.css">
+</head>
+<body>
+
+<!-- ============ Barra superior: estado y PARO (siempre visible) ============ -->
+<header class="barra">
+  <div class="identidad">
+    <div class="titulo">Control del brazo</div>
+    <div class="sub"><span id="brazo">—</span> · <span id="plataforma">—</span></div>
+  </div>
+  <div class="insignias">
+    <span class="insignia" id="b-conexion">sin conexión</span>
+    <span class="insignia" id="b-estado">—</span>
+    <span class="insignia" id="b-watchdog">watchdog —</span>
+    <span class="insignia" id="b-saturacion">saturación —</span>
+    <span class="insignia" id="b-calibracion">calibración off</span>
+  </div>
+  <div class="acciones-estado">
+    <button id="btn-habilitar" class="btn">Habilitar</button>
+    <button id="btn-deshabilitar" class="btn">Deshabilitar</button>
+    <button id="btn-liberar" class="btn advertencia">Liberar paro</button>
+  </div>
+  <button id="btn-paro" class="paro" title="Paro de emergencia (tecla Espacio)">PARO</button>
+</header>
+<div id="motivo" class="motivo"></div>
+
+<main class="rejilla">
+
+  <!-- ============ Gráficas ============ -->
+  <section class="tarjeta ancha">
+    <div class="cabecera">
+      <h2>Gráficas en vivo</h2>
+      <div class="controles">
+        <label>Articulación <select id="sel-graf"></select></label>
+        <label>Ventana <select id="sel-ventana">
+          <option value="5">5 s</option><option value="10" selected>10 s</option>
+          <option value="30">30 s</option></select></label>
+        <button id="btn-pausa" class="btn chico">Pausar</button>
+      </div>
+    </div>
+    <div class="graficas">
+      <div class="graf"><div class="leyenda"><i class="c1"></i>posición real <i class="c2"></i>trayectoria deseada <span class="unidad">[°]</span></div><canvas id="g-pos"></canvas></div>
+      <div class="graf"><div class="leyenda"><i class="c3"></i>error <span class="unidad">[°]</span></div><canvas id="g-err"></canvas></div>
+      <div class="graf"><div class="leyenda"><i class="c4"></i>mando <i class="c5"></i>límite <span class="unidad" id="u-mando">[A]</span></div><canvas id="g-cmd"></canvas></div>
+    </div>
+  </section>
+
+  <!-- ============ Mover ============ -->
+  <section class="tarjeta">
+    <div class="cabecera"><h2>Mover</h2>
+      <label class="pct">Velocidad <input id="in-pct" type="number" min="1" max="200" step="1" value="50"> %</label>
+    </div>
+    <table class="tabla" id="tabla-mover">
+      <thead><tr><th>Articulación</th><th>Actual</th><th>Objetivo [°]</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="fila-botones">
+      <button id="btn-mover" class="btn primario">Mover todas</button>
+      <button id="btn-cero" class="btn">Ir a cero</button>
+      <button id="btn-copiar" class="btn">Copiar actual</button>
+      <button id="btn-cancelar-mov" class="btn">Detener</button>
+    </div>
+    <div class="nota" id="nota-mov"></div>
+  </section>
+
+  <!-- ============ Perfil y articulaciones ============ -->
+  <section class="tarjeta">
+    <div class="cabecera"><h2>Perfil y articulaciones</h2></div>
+    <div class="fila">
+      <label>Brazo <select id="sel-brazo"></select></label>
+    </div>
+    <table class="tabla" id="tabla-perfil">
+      <thead><tr><th>Articulación</th><th>Estado</th><th>Mando</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="fila-botones">
+      <button id="btn-perfil" class="btn primario">Aplicar perfil</button>
+    </div>
+    <div class="nota">Aplicar reinicia el control (deactivate → configure → activate) y fija el cero en la postura actual. Ausente = no montada (su masa no cuenta); bloqueada = fija, su masa sí cuenta.</div>
+  </section>
+
+  <!-- ============ Ganancias ============ -->
+  <section class="tarjeta ancha">
+    <div class="cabecera"><h2>Ganancias, calibración y límites</h2>
+      <div class="controles">
+        <label class="chk"><input type="checkbox" id="chk-supervisor"> Supervisor</label>
+        <label>Vel. por defecto <input id="in-pct-def" type="number" min="1" max="200" step="1"> %</label>
+        <button id="btn-pct-def" class="btn chico">Aplicar</button>
+      </div>
+    </div>
+    <div class="desliza">
+    <table class="tabla" id="tabla-ganancias">
+      <thead><tr><th>Art.</th><th>λ1</th><th>λ2</th><th>λ3</th><th>λ4</th><th>β</th><th>α</th><th>armadura</th><th>α_g</th><th>fricción</th><th>límite</th><th>κ est.</th><th>sobreimp.</th><th>sat.</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    </div>
+    <div class="nota">Polos reales del GPI p(s) = Π(s+λᵢ) [rad/s]. Sin sobreimpulso con κ = M<sub>ctrl</sub>/M<sub>real</sub> entre ~0.6 y ~1.4. Cada cambio se valida en el control antes de aplicarse.</div>
+  </section>
+
+  <!-- ============ Conformador ============ -->
+  <section class="tarjeta">
+    <div class="cabecera"><h2>Conformador (base elástica)</h2></div>
+    <div class="fila">
+      <label>Tipo <select id="sh-tipo"><option>ninguno</option><option>zv</option><option>zvd</option><option>ei</option></select></label>
+      <label>f [Hz] <input id="sh-f" type="number" step="0.01" min="0.05"></label>
+      <label>ζ <input id="sh-z" type="number" step="0.005" min="0" max="0.9"></label>
+    </div>
+    <div class="fila-botones">
+      <button id="btn-shaper" class="btn primario">Aplicar</button>
+      <button id="btn-modo" class="btn">Estimar modo (último movimiento)</button>
+    </div>
+    <pre class="salida" id="salida-modo"></pre>
+  </section>
+
+  <!-- ============ Autotuning ============ -->
+  <section class="tarjeta">
+    <div class="cabecera"><h2>Autotuning</h2></div>
+    <div class="fila" id="at-arts"></div>
+    <div class="fila">
+      <label class="chk"><input type="checkbox" id="at-aplicar" checked> Aplicar resultados</label>
+      <label class="chk"><input type="checkbox" id="at-guardar"> Guardar al YAML</label>
+    </div>
+    <div class="fila-botones">
+      <button id="btn-autotune" class="btn primario">Iniciar autotuning</button>
+      <button id="btn-cancelar-at" class="btn">Cancelar</button>
+    </div>
+    <div class="progreso"><div id="at-barra"></div></div>
+    <div class="nota" id="at-etapa"></div>
+    <pre class="salida" id="at-resultado"></pre>
+    <div class="nota">Mueve el brazo en 3 posturas con corriente reducida. Verifica antes que las posturas del perfil no choquen. Se recomienda activar el modo calibración.</div>
+  </section>
+
+  <!-- ============ Guardar y eventos ============ -->
+  <section class="tarjeta">
+    <div class="cabecera"><h2>Guardar y eventos</h2></div>
+    <div class="fila">
+      <label class="chk"><input type="checkbox" id="chk-calibracion"> Modo calibración (exige esta página abierta)</label>
+    </div>
+    <div class="fila">
+      <label class="chk"><input type="checkbox" id="chk-estados"> Incluir estados de articulación</label>
+    </div>
+    <div class="fila-botones">
+      <button id="btn-guardar" class="btn primario">Guardar configuración al YAML</button>
+    </div>
+    <ul class="eventos" id="eventos"></ul>
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+<script src="/web/app.js"></script>
+</body>
+</html>
