@@ -1,4 +1,4 @@
-# =====================================================================
+ros2 launch control_adrc_rover brazo_sim.launch.py sim:=falseros2 launch control_adrc_rover brazo_sim.launch.py sim:=false# =====================================================================
 # Parámetros del controlador ADRC del brazo — ROBOT REAL (Jetson)
 # Orden de los arreglos: [J1, J2, J3, J4, J5]
 #
@@ -140,5 +140,5 @@ adrc_simple:
     duracion_minima: 0.5               # [s]
 
     # ---------------- Diagnóstico ----------------
-    publicar_diagnostico: false        # ~/error_deg, ~/state, ~/reference
-    periodo_log: 0.0                   # [s] 0 = apagado
+    publicar_diagnostico: true        # ~/error_deg, ~/state, ~/reference
+    periodo_log: 0.1                   # [s] 0 = apagado
