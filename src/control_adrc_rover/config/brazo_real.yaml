@@ -1,4 +1,4 @@
-ros2 launch control_adrc_rover brazo_sim.launch.py sim:=falseros2 launch control_adrc_rover brazo_sim.launch.py sim:=false# =====================================================================
+# =====================================================================
 # Parámetros del controlador ADRC del brazo — ROBOT REAL (Jetson)
 # Orden de los arreglos: [J1, J2, J3, J4, J5]
 #
