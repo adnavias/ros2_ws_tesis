@@ -123,7 +123,11 @@ trayectoria:
 
 seguridad:
   paro_accion: "sin_corriente"   # sin_corriente | congelar
-  error_max_deg: 30.0            # error de seguimiento que dispara falla
+  error_max_deg: 30.0            # error de seguimiento máximo
+  # Al superarlo: "sostener" aborta el movimiento y sostiene la postura
+  # actual (si vuelve a pasar en 3 s, falla con corriente cero);
+  # "sin_corriente" corta la corriente de inmediato.
+  accion_error: "sostener"
 
 shaper:
   tipo: "ninguno"                # ninguno | zv | zvd | ei

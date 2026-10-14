@@ -169,3 +169,21 @@ def test_monte_carlo_masas_armadura_ktau(cargar):
             malas.append((it, np.round(sobre, 2).tolist()))
     assert probadas >= max(1, n // 2)
     assert not malas, f'casos con sobreimpulso u oscilación: {malas}'
+
+
+def test_error_excesivo_sostiene_y_luego_falla(cargar):
+    cfg = cargar('sim')
+    ctrl, planta = _armar(cfg)
+    _correr(ctrl, planta, np.full(5, np.nan), 0.5)
+    ctrl.q_d = ctrl.q_d.copy()
+    ctrl.q_d[2] += math.radians(35.0)
+    ctrl.t_prev = 10.0
+    cmd = ctrl._ley(ctrl.q, np.zeros(5), 0.005, False)
+    assert ctrl.estado == 'habilitado'            # aborta y sostiene
+    assert np.allclose(ctrl.q_d, ctrl.q)
+    assert abs(cmd[1]) > 1.0                       # sigue sosteniendo J2
+    ctrl.q_d = ctrl.q_d.copy()
+    ctrl.q_d[2] += math.radians(35.0)
+    ctrl.t_prev = 11.0                             # se repite en < 3 s
+    cmd = ctrl._ley(ctrl.q, np.zeros(5), 0.005, False)
+    assert ctrl.estado == 'falla' and np.allclose(cmd, 0.0)

@@ -187,6 +187,8 @@ class Controlador:
                                       int(seg['muestras_invalidas_max']))
         self.vel = EstimadorVelocidad(self.n)
         self.error_max = math.radians(float(seg['error_max_deg']))
+        self.accion_error = seg.get('accion_error', 'sostener')
+        self._t_aborto: Optional[float] = None
         self.paro_accion = seg['paro_accion']
 
         # --- Supervisor, kappa y registro de phi_hat ---
@@ -318,12 +320,7 @@ class Controlador:
         self.kappa_est.reiniciar()
         self._mov = None
         # integradores: la primera corriente es la de gravedad
-        v0 = np.zeros(len(self.k_gpi))
-        if self.modelo is not None:
-            m_cal, g_cal = self._modelo_cal(self.q, self.data_ctrl)
-            m_ctrl = escalar_beta(m_cal, self.beta[self.g_mod])
-            v0[self.g_mod] = np.linalg.solve(m_ctrl, g_cal)
-        self.gpi.reiniciar(v0)
+        self.gpi.reiniciar(self._v_gravedad())
         rampa = float(self.cfg.lazo['rampa_gravedad'])
         self.r_grav = 0.0 if (rampa > 0.0 and
                               self.cfg.lazo['feedforward_gravedad']) else (
@@ -335,6 +332,33 @@ class Controlador:
         self.motivo = ''
         self._evento('Control habilitado')
         return True, 'Habilitado'
+
+    def _v_gravedad(self) -> np.ndarray:
+        """Aceleración virtual que, con la inversa de B, sostiene el peso."""
+        v0 = np.zeros(len(self.k_gpi))
+        if self.modelo is not None:
+            m_cal, g_cal = self._modelo_cal(self.q, self.data_ctrl)
+            m_ctrl = escalar_beta(m_cal, self.beta[self.g_mod])
+            v0[self.g_mod] = np.linalg.solve(m_ctrl, g_cal)
+        return v0
+
+    def _sostener_aqui(self, motivo: str) -> None:
+        """Aborta el movimiento y sostiene la postura medida actual.
+
+        La referencia pasa a ser la posición medida (error cero) y los
+        integradores se reinician para aportar la parte de la gravedad que
+        no da el feedforward, así la corriente no salta ni cae a cero.
+        """
+        self.objetivo = self.q.copy()
+        self.q_d = self.q.copy()
+        self.qd_d[:] = 0.0
+        self.qdd_d[:] = 0.0
+        self.traj.fijar(self.q)
+        self.shaper.reiniciar()
+        self._mov = None
+        self.gpi.reiniciar(self._v_gravedad() * (1.0 - self.r_grav))
+        self._evento(f'Movimiento abortado: {motivo}. Se sostiene la postura '
+                     f'actual (si se repite en 3 s, falla y corriente cero)')
 
     def deshabilitar(self, motivo: str = 'pedido') -> None:
         """Abre el lazo (corriente cero)."""
@@ -558,9 +582,18 @@ class Controlador:
         e = q[kg] - self.q_d[kg]
         if np.any(np.abs(e) > self.error_max) and not congelar:
             j = int(np.argmax(np.abs(e)))
-            self._falla(f'error de seguimiento de {math.degrees(e[j]):.1f}° '
-                        f'en {self.nombres[kg[j]]}')
-            return np.zeros(len(kg))
+            motivo = (f'error de seguimiento de {math.degrees(e[j]):.1f}° en '
+                      f'{self.nombres[kg[j]]}')
+            t = self.t_prev if self.t_prev is not None else 0.0
+            reciente = (self._t_aborto is not None
+                        and t - self._t_aborto < 3.0)
+            if self.accion_error == 'sostener' and not reciente:
+                self._t_aborto = t
+                self._sostener_aqui(motivo)
+                e = q[kg] - self.q_d[kg]          # = 0
+            else:
+                self._falla(motivo)
+                return np.zeros(len(kg))
         ff = 1.0 if lazo['feedforward_aceleracion'] else 0.0
         if congelar:
             v = self.gpi.parte_integral()

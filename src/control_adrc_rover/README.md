@@ -469,7 +469,7 @@ articulaciones:
 
 - `lazo`: `frecuencia_control`, `referencia_objetivos`, `feedforward_gravedad`, `feedforward_aceleracion`, `rampa_gravedad` (s), `antiwindup_ganancia`, `factor_inercia_sup`, `factor_gravedad_sup`, `margen_corriente_trayectoria`, `incluir_armadura` (false en sim), `modelo_friccion` (zona_muerta | velocidad), `habilitar_al_arrancar`.
 - `trayectoria`: `factor_100pct`, `velocidad_pct_defecto`, `velocidad_pct_min`, `duracion_minima`, `objetivo_fuera_de_rango`.
-- `seguridad`: `watchdog_congelar`, `watchdog_quitar`, `paro_accion` (sin_corriente | congelar), `heartbeat_timeout`, `muestras_invalidas_max`, `error_max_deg`.
+- `seguridad`: `watchdog_congelar`, `watchdog_quitar`, `paro_accion` (sin_corriente | congelar), `heartbeat_timeout`, `muestras_invalidas_max`, `error_max_deg`, `accion_error` (sostener | sin_corriente).
 - `shaper`, `supervisor`, `autotune`, `diagnostico`: ver secciones 15 y 16.
 - `interfaz` (plataforma): `topico_estado`, `qos_estado_best_effort`, `tipo_mando` (float64_por_articulacion | float64_multiarray | joint_state), `patron_topico_mando` (`{articulacion}` se sustituye), `topico_mando_unico`, `patron_topico_fuerza`, tópicos de objetivos, `topico_heartbeat`, `topico_imu`, `usar_stamp_medicion`.
 - `actuador_sim` (plataforma sim): motores "reales" de la planta, servo y sostén.
@@ -548,7 +548,7 @@ Al habilitar, los integradores se inicializan para que la primera corriente sea 
 ### 13.7 Otras protecciones
 
 - Encoder: NaN o saltos mayores que `salto_max` se rechazan; más de `muestras_invalidas_max` seguidas → falla. Las articulaciones continuas se desenvuelven.
-- Error de seguimiento mayor que `error_max_deg` → falla.
+- Error de seguimiento mayor que `error_max_deg` → con `accion_error: sostener` (por defecto) se aborta el movimiento y se sostiene la postura actual; si vuelve a pasar en menos de 3 s, falla con corriente cero (`sin_corriente` corta de inmediato).
 - Paredes virtuales en los límites del URDF.
 - Límite de pendiente del mando (`pendiente_max`).
 - Paro de emergencia (servicio, tópico, interfaz): latched; `paro_accion: sin_corriente` (por defecto) o `congelar`. Ojo: con corriente cero J2/J3 (reductor strain wave) pueden bajar por su peso; J1/J4 (sinfín) normalmente no.
@@ -663,7 +663,7 @@ Gazebo con masas distintas: `escala_masa:=0.6` o `1.4` en `gazebo.launch.py`.
 - **Estado falla "sin medición"**: el watchdog quitó la corriente. Cuando vuelva la medición, "Habilitar".
 - **Objetivo rechazado "sostener el brazo… pide X A"**: esa postura excede el límite de corriente; es un límite físico.
 - **Muy lento / "alargada para no exceder la corriente"**: el motor no da para más en esa postura (típico: hombro con el brazo estirado).
-- **La interfaz no abre**: en WSL abre `http://localhost:8080` a mano; desde otra PC usa la IP que imprime la terminal y revisa que el puerto 8080 no esté bloqueado.
+- **La interfaz no abre**: en WSL usa la IP que imprime la terminal (`http://172.x.x.x:8080`); a veces Windows no reenvía `localhost` a WSL. Si quedó un proceso viejo ocupando el puerto, ciérralo (`pkill -f control_gui`).
 - **El paro no se quita**: "Liberar paro" y después "Habilitar" (son dos pasos a propósito).
 - **colcon falla en control_adrc_interfaces**: compila desde `~/ros2_ws` y verifica `ros-humble-rosidl-default-generators` (viene con ROS).
 

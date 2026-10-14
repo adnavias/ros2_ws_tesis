@@ -299,6 +299,7 @@ DEFAULTS_SECCIONES: Dict[str, Dict[str, Any]] = {
         'heartbeat_timeout': 0.5,
         'muestras_invalidas_max': 10,
         'error_max_deg': 30.0,
+        'accion_error': 'sostener',
     },
     'shaper': {
         'tipo': 'ninguno',
@@ -556,6 +557,8 @@ def validar(cfg: ConfigBrazo) -> None:
             'interfaz')
     _elegir(cfg.shaper['tipo'], SHAPERS, 'tipo', 'shaper')
     _elegir(cfg.seguridad['paro_accion'], PAROS, 'paro_accion', 'seguridad')
+    _elegir(cfg.seguridad['accion_error'], ('sostener', 'sin_corriente'),
+            'accion_error', 'seguridad')
     _elegir(cfg.lazo['referencia_objetivos'], REFERENCIAS,
             'referencia_objetivos', 'lazo')
     _elegir(cfg.trayectoria['objetivo_fuera_de_rango'],

@@ -147,7 +147,10 @@ class NodoGui(Node):
             f'Interfaz web lista: {url_local} (en esta máquina) | desde otra '
             f'computadora de la red: {", ".join(urls)}')
         if gp('abrir_navegador'):
-            threading.Thread(target=self._abrir, args=(url_local,),
+            # En WSL, Windows no siempre reenvía "localhost" al puerto de
+            # Linux; la IP de WSL funciona siempre desde el navegador.
+            url = urls[0] if _es_wsl() and urls else url_local
+            threading.Thread(target=self._abrir, args=(url,),
                              daemon=True).start()
 
     # ------------------------------------------------------------------
