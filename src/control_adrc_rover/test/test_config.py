@@ -1,0 +1,77 @@
+"""Pruebas de carga y validación de la configuración."""
+
+import pytest
+
+from control_adrc_rover.nucleo import config as C
+
+
+def test_perfil_sim_carga(cargar):
+    cfg = cargar('sim')
+    assert cfg.nombres == ['Joint_1', 'Joint_2', 'Joint_3', 'Joint_4',
+                           'Joint_5']
+    j1 = cfg.articulacion('Joint_1')
+    assert j1.encoder == 'absoluto'
+    assert j1.limite_mando == pytest.approx(6.54)
+    assert j1.k_tau == pytest.approx(3.7485, rel=1e-3)
+    assert j1.armadura_nominal == pytest.approx(0.777, rel=1e-2)
+    assert cfg.lazo['incluir_armadura'] is False
+    assert cfg.articulacion('Joint_5').mando == 'posicion_directa'
+
+
+def test_real_incremental_por_defecto(cargar):
+    cfg = cargar('real')
+    assert all(a.encoder == 'incremental' for a in cfg.articulaciones)
+    assert cfg.articulacion('Joint_1').limite_mando == pytest.approx(2.5)
+    assert cfg.articulacion('Joint_2').postura_encendido_urdf == \
+        pytest.approx(-1.5707)
+
+
+def test_montadas_1_deja_solo_j1(cargar):
+    cfg = cargar('real', montadas=1)
+    assert [a.nombre for a in cfg.movibles] == ['Joint_1']
+    assert all(a.estado == 'ausente' for a in cfg.articulaciones[1:])
+
+
+def test_estados_explicitos(cargar):
+    cfg = cargar('sim', estados={'Joint_4': 'bloqueada',
+                                 'Joint_5': 'ausente'})
+    assert cfg.articulacion('Joint_4').estado == 'bloqueada'
+    assert [a.nombre for a in cfg.movibles] == [
+        'Joint_1', 'Joint_2', 'Joint_3']
+
+
+def test_limite_por_encima_del_reductor_se_rechaza(cargar):
+    with pytest.raises(C.ErrorConfig, match='par continuo'):
+        cargar('sim', extra={'articulaciones': {
+            'Joint_2': {'limite_mando': 7.35}}})
+
+
+def test_limite_por_encima_de_corriente_continua(cargar):
+    with pytest.raises(C.ErrorConfig, match='corriente continua'):
+        cargar('sim', extra={'articulaciones': {
+            'Joint_1': {'limite_mando': 9.0}}})
+
+
+def test_polo_demasiado_rapido(cargar):
+    with pytest.raises(C.ErrorConfig, match='λ·dt'):
+        cargar('sim', extra={'por_defecto': {'polos': [10.0, 10.0, 150.0,
+                                                       150.0]}})
+
+
+def test_polos_desde_wn():
+    assert C.polos_desde({'wn': 5.0, 'relacion_observador': 4.0}) == \
+        [5.0, 5.0, 20.0, 20.0]
+
+
+def test_parsear_estados():
+    assert C.parsear_estados('Joint_2=ausente, Joint_3=bloqueada') == {
+        'Joint_2': 'ausente', 'Joint_3': 'bloqueada'}
+    with pytest.raises(C.ErrorConfig):
+        C.parsear_estados('Joint_2=rota')
+
+
+def test_sin_activas_se_rechaza(cargar):
+    with pytest.raises(C.ErrorConfig, match='ninguna articulación activa'):
+        cargar('sim', estados={n: 'ausente' for n in
+                               ['Joint_1', 'Joint_2', 'Joint_3', 'Joint_4',
+                                'Joint_5']})
