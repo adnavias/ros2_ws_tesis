@@ -86,3 +86,11 @@ def test_kappa_por_movimiento():
     assert estimar_kappa_lote(qdd, v) == pytest.approx(1.3, rel=0.02)
     # sin excitación: NaN
     assert np.isnan(estimar_kappa_lote(0.01 * v, v))
+
+
+def test_supervisor_no_baja_de_fraccion_del_wn_inicial():
+    s = Supervisor(dict(CFG, wn_min_relativo=0.6))
+    malo = analizar('J', np.radians([10.0, 11.0, 10.0]), 0.0,
+                    math.radians(10.0), math.radians(0.05))
+    assert s.decidir(malo, 5.0, None, wn_inicial=8.0) == pytest.approx(0.96)
+    assert s.decidir(malo, 4.8, None, wn_inicial=8.0) is None

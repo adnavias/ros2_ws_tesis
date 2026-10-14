@@ -117,6 +117,7 @@ class Articulacion:
     ancho_friccion: float
     pendiente_max: float           # [A/s] (o N·m/s, rad/s) 0 = sin límite
     inercia_constante: float
+    amortiguamiento_viscoso: float  # [N·m·s/rad] feedforward b * q*'
     # Interfaz y medición
     signo: float
     encoder: str
@@ -232,6 +233,7 @@ DEFAULTS_ARTICULACION: Dict[str, Any] = {
     'ancho_friccion': 0.1,
     'pendiente_max': 0.0,
     'inercia_constante': 1.0,
+    'amortiguamiento_viscoso': 0.0,
     'signo': 1.0,
     'encoder': 'incremental',
     'postura_encendido_urdf': 0.0,
@@ -300,6 +302,7 @@ DEFAULTS_SECCIONES: Dict[str, Dict[str, Any]] = {
         'muestras_invalidas_max': 10,
         'error_max_deg': 30.0,
         'accion_error': 'sostener',
+        'gracia_aborto': 1.5,
     },
     'shaper': {
         'tipo': 'ninguno',
@@ -317,6 +320,8 @@ DEFAULTS_SECCIONES: Dict[str, Dict[str, Any]] = {
         'wn_min': 2.0,
         'ventana': 1.5,
         'banda_cruces_deg': 0.05,
+        'desplazamiento_min_deg': 3.0,
+        'wn_min_relativo': 0.6,
     },
     'autotune': {
         'factor_corriente': 0.6,
@@ -500,6 +505,8 @@ def _construir_articulacion(nom: str, idx: int, d: dict,
         pendiente_max=_num(d['pendiente_max'], 'pendiente_max', ctx),
         inercia_constante=_num(d['inercia_constante'], 'inercia_constante',
                                ctx),
+        amortiguamiento_viscoso=_num(d['amortiguamiento_viscoso'],
+                                     'amortiguamiento_viscoso', ctx),
         signo=signo, encoder=encoder,
         postura_encendido_urdf=_num(d['postura_encendido_urdf'],
                                     'postura_encendido_urdf', ctx),

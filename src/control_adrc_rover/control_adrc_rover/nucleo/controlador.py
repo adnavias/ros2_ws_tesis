@@ -149,6 +149,7 @@ class Controlador:
         self.fc_gain = np.array([4.0 / max(a.ancho_friccion, 1e-6)
                                  for a in gpi_arts])
         self.j_const = np.array([a.inercia_constante for a in gpi_arts])
+        self.b_visc = np.array([a.amortiguamiento_viscoso for a in gpi_arts])
         self.beta = np.array([a.beta for a in gpi_arts])
         self.alfa = np.array([a.alfa for a in gpi_arts])
         self.armadura = np.array([
@@ -159,6 +160,7 @@ class Controlador:
                                       for a in gpi_arts])
         self.gpi = GPI(np.array([a.polos for a in gpi_arts]).reshape(-1, 4),
                        float(lazo['antiwindup_ganancia']))
+        self.wn_inicial = self.gpi.wn().copy()
         self.pendiente = LimitadorPendiente([a.pendiente_max
                                              for a in gpi_arts])
         self.friccion_velocidad = (lazo.get('modelo_friccion', 'zona_muerta')
@@ -188,6 +190,7 @@ class Controlador:
         self.vel = EstimadorVelocidad(self.n)
         self.error_max = math.radians(float(seg['error_max_deg']))
         self.accion_error = seg.get('accion_error', 'sostener')
+        self.gracia_aborto = float(seg.get('gracia_aborto', 1.5))
         self._t_aborto: Optional[float] = None
         self.paro_accion = seg['paro_accion']
 
@@ -579,7 +582,13 @@ class Controlador:
         lazo = self.cfg.lazo
         kg = self.k_gpi
         e = q[kg] - self.q_d[kg]
-        if np.any(np.abs(e) > self.error_max) and not congelar:
+        t_ahora = self.t_prev if self.t_prev is not None else 0.0
+        en_gracia = (self._t_aborto is not None
+                     and t_ahora - self._t_aborto < self.gracia_aborto)
+        # justo después de abortar, el brazo trae inercia: se tolera el
+        # doble de error mientras frena
+        error_max = self.error_max * (2.0 if en_gracia else 1.0)
+        if np.any(np.abs(e) > error_max) and not congelar:
             j = int(np.argmax(np.abs(e)))
             motivo = (f'error de seguimiento de {math.degrees(e[j]):.1f}° en '
                       f'{self.nombres[kg[j]]}')
@@ -625,6 +634,8 @@ class Controlador:
             m_diag[sel] = np.diag(m_ctrl)
         sin = self.g_sin
         tau[sin] = self.beta[sin] * self.j_const[sin] * v[sin]
+        # fricción viscosa conocida (p. ej. <dynamics damping> del URDF)
+        tau = tau + self.b_visc * self.qd_d[kg]
 
         k = np.where(self.es_corriente, self.k_tau, 1.0)
         cmd_core = tau / k
@@ -709,14 +720,15 @@ class Controlador:
                 self.kappa[g] = estimar_kappa_lote(qdd[:, g], vv[:, g])
         kappas = self.kappa
         for g, k in enumerate(self.k_gpi):
-            if abs(mov['qf'][k] - mov['q0'][k]) < 1e-4:
-                continue
+            if abs(mov['qf'][k] - mov['q0'][k]) < self.supervisor.desplazamiento_min:
+                continue          # casi no se movió: el % no tiene sentido
             r = analizar(self.nombres[k], qs[:, k], mov['q0'][k],
                          mov['qf'][k], self.supervisor.banda)
             self.sobreimpulso[k] = math.radians(r.sobreimpulso_deg)
             kap = kappas[g] if np.isfinite(kappas[g]) else None
             n_prev = len(self.supervisor.eventos)
-            factor = self.supervisor.decidir(r, float(self.gpi.wn()[g]), kap)
+            factor = self.supervisor.decidir(r, float(self.gpi.wn()[g]), kap,
+                                             float(self.wn_inicial[g]))
             for ev in self.supervisor.eventos[n_prev:]:
                 self._evento('Supervisor: ' + ev)
             if factor is not None:

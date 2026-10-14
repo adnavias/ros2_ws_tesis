@@ -35,7 +35,7 @@ class Planta:
                  armadura: Optional[np.ndarray] = None,
                  k_tau: Optional[np.ndarray] = None,
                  i0: Optional[np.ndarray] = None,
-                 viscosa: float = 0.05,
+                 viscosa=0.05,
                  retardo_muestras: int = 1,
                  coulomb: Optional[np.ndarray] = None) -> None:
         """Args:
@@ -92,7 +92,8 @@ class Planta:
         self.k_tau = (np.ones(self.n) if k_tau is None
                       else np.asarray(k_tau, dtype=float))
         self.i0 = np.zeros(self.n) if i0 is None else np.asarray(i0, float)
-        self.viscosa = float(viscosa)
+        self.viscosa = np.broadcast_to(np.asarray(viscosa, dtype=float),
+                                       (self.n,)).copy()
         self.coulomb = (np.zeros(self.n) if coulomb is None
                         else np.asarray(coulomb, dtype=float))
         self.q = np.array([q0.get(n, 0.0) for n in nombres], dtype=float)

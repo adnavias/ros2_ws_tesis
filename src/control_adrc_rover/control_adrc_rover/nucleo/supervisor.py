@@ -86,6 +86,9 @@ class Supervisor:
         self.wn_min = float(cfg['wn_min'])
         self.ventana = float(cfg['ventana'])
         self.banda = math.radians(float(cfg['banda_cruces_deg']))
+        self.desplazamiento_min = math.radians(
+            float(cfg.get('desplazamiento_min_deg', 3.0)))
+        self.wn_min_relativo = float(cfg.get('wn_min_relativo', 0.6))
         self.eventos: List[str] = []
 
     def excede(self, r: ResultadoMovimiento) -> bool:
@@ -95,10 +98,20 @@ class Supervisor:
         return r.sobreimpulso_deg > umbral or r.cruces > self.cruces_max
 
     def decidir(self, r: ResultadoMovimiento, wn_actual: float,
-                kappa: Optional[float]) -> Optional[float]:
-        """Factor de escala de polos (<1) o None si no hay que bajar."""
+                kappa: Optional[float],
+                wn_inicial: Optional[float] = None) -> Optional[float]:
+        """Factor de escala de polos (<1) o None si no hay que bajar.
+
+        El piso de wn es max(wn_min, wn_min_relativo * wn_inicial): bajar
+        mucho la rigidez también empeora el seguimiento (con wn bajo, una
+        perturbación fija produce un error ~ 1/wn^2), así que el supervisor
+        no lleva las ganancias más allá de ese límite.
+        """
         if not self.habilitado or not self.excede(r):
             return None
+        piso = self.wn_min
+        if wn_inicial is not None:
+            piso = max(piso, self.wn_min_relativo * wn_inicial)
         if kappa is not None and kappa < 0.6:
             self.eventos.append(
                 f'{r.nombre}: sobreimpulso {r.sobreimpulso_deg:.2f}° / '
@@ -106,11 +119,12 @@ class Supervisor:
                 f'modelo subestima la inercia; bajar wn no lo corrige. '
                 f'Ejecuta el autotuning.')
             return None
-        nuevo = max(self.wn_min, wn_actual * self.factor)
+        nuevo = max(piso, wn_actual * self.factor)
         if nuevo >= wn_actual - 1e-9:
             self.eventos.append(
-                f'{r.nombre}: oscila pero wn ya está en el mínimo '
-                f'({self.wn_min:.1f} rad/s); revisa la calibración.')
+                f'{r.nombre}: sobreimpulso {r.sobreimpulso_deg:.2f}° pero wn '
+                f'ya está en su mínimo ({piso:.1f} rad/s); bajar más no '
+                f'ayuda: revisa la calibración (autotuning, fricción).')
             return None
         self.eventos.append(
             f'{r.nombre}: sobreimpulso {r.sobreimpulso_deg:.2f}° '

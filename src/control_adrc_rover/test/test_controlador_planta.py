@@ -56,7 +56,8 @@ def _correr(ctrl, planta, objetivo, t_total, pct=50.0):
 
 def test_brazo_completo_sin_sobreimpulso(cargar):
     cfg = cargar('sim')
-    ctrl, planta = _armar(cfg)
+    # amortiguamiento de las articulaciones como en brazo.urdf (Gazebo)
+    ctrl, planta = _armar(cfg, viscosa=np.array([1.0, 1.5, 1.0, 1.0]))
     obj = np.radians([30.0, 10.0, -20.0, 5.0, np.nan])
     r = _correr(ctrl, planta, obj, 8.0, 80.0)
     q = r['q'][:, :4]
@@ -184,6 +185,11 @@ def test_error_excesivo_sostiene_y_luego_falla(cargar):
     assert abs(cmd[1]) > 1.0                       # sigue sosteniendo J2
     ctrl.q_d = ctrl.q_d.copy()
     ctrl.q_d[2] += math.radians(35.0)
-    ctrl.t_prev = 11.0                             # se repite en < 3 s
+    ctrl.t_prev = 10.5                             # en la gracia: tolera 2x
+    ctrl._ley(ctrl.q, np.zeros(5), 0.005, False)
+    assert ctrl.estado == 'habilitado'
+    ctrl.q_d = ctrl.q_d.copy()
+    ctrl.q_d[2] += math.radians(35.0)
+    ctrl.t_prev = 12.0                             # se repite en < 3 s
     cmd = ctrl._ley(ctrl.q, np.zeros(5), 0.005, False)
     assert ctrl.estado == 'falla' and np.allclose(cmd, 0.0)

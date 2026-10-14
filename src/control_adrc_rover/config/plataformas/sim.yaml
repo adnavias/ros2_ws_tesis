@@ -40,10 +40,18 @@ articulaciones:
   Joint_5:
     medida: false
   # Límites de los Yellow Jacket en simulación (en el robot real 2.5 A).
+  # amortiguamiento_viscoso = <dynamics damping> de brazo.urdf, que Gazebo
+  # sí aplica: el control lo compensa con b * q*' (feedforward).
   Joint_1:
     limite_mando: 6.54
+    amortiguamiento_viscoso: 1.0
+  Joint_2:
+    amortiguamiento_viscoso: 1.5
+  Joint_3:
+    amortiguamiento_viscoso: 1.0
   Joint_4:
     limite_mando: 6.54
+    amortiguamiento_viscoso: 1.0
 
 lazo:
   # Gazebo NO simula la inercia de los rotores: el modelo del control no

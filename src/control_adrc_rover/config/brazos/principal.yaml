@@ -128,6 +128,7 @@ seguridad:
   # actual (si vuelve a pasar en 3 s, falla con corriente cero);
   # "sin_corriente" corta la corriente de inmediato.
   accion_error: "sostener"
+  gracia_aborto: 1.5             # [s] tras abortar se tolera 2x el error mientras frena
 
 shaper:
   tipo: "ninguno"                # ninguno | zv | zvd | ei
@@ -144,6 +145,8 @@ supervisor:
   factor_reduccion: 0.85
   wn_min: 2.0
   ventana: 1.5                   # [s] asentamiento observado
+  desplazamiento_min_deg: 3.0    # no evalúa articulaciones que casi no se movieron
+  wn_min_relativo: 0.6           # nunca baja wn de 0.6 x el wn con que arrancó
 
 autotune:
   factor_corriente: 0.6          # fracción del límite durante el autotune
