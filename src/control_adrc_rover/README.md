@@ -301,7 +301,7 @@ Los objetivos fuera de los límites del URDF (menos `margen_limite`) se recortan
 - Gráficas en vivo de la articulación elegida: posición real vs. trayectoria deseada, error y mando con sus límites.
 - Mover: objetivo en grados por articulación, % de velocidad, "Mover sólo ésta", ir a cero, detener.
 - Perfil y articulaciones: elegir brazo y poner cada articulación activa/bloqueada/ausente (reinicia el control y fija el cero).
-- Ganancias: los 4 polos, β, α, armadura, α_g, fricción y límite por articulación, con kappa estimado, sobreimpulso y saturaciones. Cada cambio lo valida el control; si no es válido aparece el motivo.
+- Ganancias: sintonía por polos (λ1..λ4) o por ζ, ω<sub>n</sub>, ε (selector por articulación; la otra vista muestra el equivalente), β, α, armadura, α_g, fricción y límite por articulación, con kappa estimado, sobreimpulso y saturaciones. Cada cambio lo valida el control; si no es válido aparece el motivo.
 - Conformador: tipo, frecuencia y amortiguamiento; botón "Estimar modo".
 - Autotuning: articulaciones, aplicar/guardar, progreso y resultados.
 - Guardar configuración al YAML y lista de eventos.
@@ -348,7 +348,9 @@ Prefijo `~` = `/adrc_simple/`.
 
 | Parámetro | Rango | Significado |
 |---|---|---|
-| `<J>.polos` | 4 valores > 0, λ·dt < 0.5, mínimo ≥ 0.5 | polos del GPI [rad/s] |
+| `<J>.sintonia` | polos, zeta | cómo se eligen las ganancias (sec. 13.1) |
+| `<J>.polos` | 4 valores > 0, \|λ\|·dt < 0.5, mínimo ≥ 0.5 | polos del GPI [rad/s]; al cambiarlo pasa a modo polos |
+| `<J>.wn`, `<J>.zeta`, `<J>.eps`, `<J>.zeta_observador` | wn > 0.5; ζ 0.2–5; 0 < ε ≤ 1; ζo 0 (= ζ) o 0.2–5 | al cambiar cualquiera pasa a modo zeta; los que no cambies se toman del equivalente actual |
 | `<J>.beta` | 0.05–1.5 (avisa si < 0.6) | margen de inercia |
 | `<J>.alfa` | 0.05–20 | escala de inercia de eslabones |
 | `<J>.armadura` | 0–20 | inercia de rotores [kg·m²] |
@@ -363,6 +365,8 @@ Ejemplos:
 
 ```bash
 ros2 param set /adrc_simple Joint_2.polos "[6.0, 6.0, 24.0, 24.0]"
+ros2 param set /adrc_simple Joint_2.zeta 1.2       # pasa a modo zeta
+ros2 param set /adrc_simple Joint_2.sintonia polos # vuelve a polos (si son reales)
 ros2 service call /adrc_simple/paro_emergencia std_srvs/srv/Trigger
 ros2 service call /adrc_simple/liberar_paro std_srvs/srv/Trigger
 ros2 service call /adrc_simple/habilitar std_srvs/srv/SetBool "{data: true}"
@@ -432,7 +436,9 @@ K_tau = k_t_caja · relacion_sinfin · eficiencia_sinfin; armadura = inercia_rot
 | `mando` | corriente_con_modelo, torque_sin_modelo, posicion_directa | tipo de mando |
 | `motor` | nombre en `motores` | obligatorio con corriente_con_modelo |
 | `limite_mando` | A (o N·m) | protege motor y reductor |
-| `polos` | [λ1, λ2, λ3, λ4] | o bien `wn` y `relacion_observador` |
+| `sintonia` | polos, zeta | cómo se eligen las ganancias (por defecto polos) |
+| `polos` | [λ1, λ2, λ3, λ4] | modo polos (formato viejo: `wn` y `relacion_observador`) |
+| `wn`, `zeta`, `eps`, `zeta_observador` | rad/s, —, (0, 1], 0 = ζ | modo zeta |
 | `beta` | ≤ 1 | margen de inercia |
 | `alfa`, `armadura`, `alfa_gravedad`, `friccion_coulomb` | — | calibración (autotuning) |
 | `encoder` | incremental, absoluto | convención de la medición |
@@ -499,6 +505,41 @@ Con κ = 1 el error cumple p(s) = s⁴ + k3 s³ + k2 s² + k1 s + k0 = (s+λ1)(s
 k3 = Σλi, k2 = Σ_{i<j} λiλj, k1 = Σ_{i<j<k} λiλjλk, k0 = Πλi.
 
 Por defecto [8, 8, 32, 32] (wn = 8, observador 4 veces más rápido).
+
+**Dos formas de dar las ganancias** (clave `sintonia` por articulación; en la interfaz, el selector "sintonía"):
+
+- `polos`: los cuatro λi reales directamente.
+- `zeta`: se eligen ζ, ω<sub>n</sub> y ε, y el polinomio es
+
+```text
+p(s) = (s² + 2 ζ ωn s + ωn²) · (s² + 2 ζo ωp s + ωp²),    ωp = ωn / ε
+```
+
+  El primer par (lento) fija cómo se cierra el error de seguimiento; el segundo (rápido) es la parte "observador" que estima la perturbación φ. ε dice cuántas veces más rápido es el observador (ε = 0.25 → 4 veces). ζo es el amortiguamiento del observador; si se deja en 0 vale lo mismo que ζ.
+
+Equivalencias útiles:
+
+| ζ, ε | Polos (−λ) | Comentario |
+|---|---|---|
+| ζ = 1, ε = 0.25 | ωn, ωn, 4ωn, 4ωn | idéntico al defecto [8, 8, 32, 32] con ωn = 8 |
+| ζ > 1 | ωn(ζ ± √(ζ²−1)), … | reales y distintos; el más lento baja (con ζ = 1.5, 0.38 ωn): más amortiguado pero converge más lento |
+| ζ < 1 | −ζωn ± j ωn√(1−ζ²), … | complejos: el error puede sobrepasar; la interfaz avisa si ζ < 0.7 |
+
+Al revés, cualquier juego de 4 polos reales λ1 ≤ λ2 ≤ λ3 ≤ λ4 se escribe como ωn = √(λ1λ2), ζ = (λ1+λ2)/(2ωn), ωp = √(λ3λ4), ζo = (λ3+λ4)/(2ωp), ε = ωn/ωp. Por eso la interfaz muestra siempre las dos vistas: la del modo elegido se edita y la otra muestra el equivalente (en gris). De zeta a polos sólo se puede pasar directo si los polos son reales (ζ ≥ 1, ζo ≥ 1); si no, escribe los 4 polos que quieras.
+
+El supervisor y el autotuning conservan la "forma" (la relación entre polos, o ζ y ε) y sólo mueven ωn.
+
+Cómo afectan a la robustez (simulación del doble integrador con 2 muestras de retardo a 200 Hz, ωn = 8; rango de κ = M_ctrl/M_real en que converge):
+
+| Sintonía | κ mínimo | κ máximo |
+|---|---|---|
+| ζ = 1, ε = 0.25 (defecto) | ~0.2 | ~3 |
+| ζ = 0.7, ε = 0.25 | ~0.3 | ~3 |
+| ζ = 1.3, ε = 0.25 | ~0.15 | ~3 |
+| ζ = 1, ε = 0.5 | ~0.3 | > 5 |
+| ζ = 1, ε = 0.15 | ~0.15 | ~2 |
+
+Reglas prácticas: ζ entre 1 y 1.3; ε = 0.25. Si el modelo **subestima** la inercia (κ bajo, oscilación lenta), baja ε (observador más rápido) o sube ζ. Si la **sobreestima** (κ alto, vibración rápida) o hay mucho retardo/ruido, sube ε hacia 0.4–0.5. El polo más rápido debe cumplir |λ|·dt ≤ 0.5 (a 200 Hz, ωn/ε ≤ 100 rad/s).
 
 La perturbación estimada es φ̂ = k0 s1 + (k1 − k2 k3) s2 [rad/s²]. Se publica y sirve para estimar el modo de la base y kappa.
 

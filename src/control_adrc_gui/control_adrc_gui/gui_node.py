@@ -36,7 +36,7 @@ from typing import List, Optional
 import rclpy
 from rcl_interfaces.msg import Parameter as ParamMsg
 from rcl_interfaces.msg import ParameterType, ParameterValue
-from rcl_interfaces.srv import SetParameters
+from rcl_interfaces.srv import SetParametersAtomically
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
@@ -129,9 +129,11 @@ class NodoGui(Node):
                                           callback_group=cb),
             'modo': self.create_client(Trigger, f'{ctrl}/estimar_modo',
                                        callback_group=cb),
-            'parametros': self.create_client(SetParameters,
-                                             f'{ctrl}/set_parameters',
-                                             callback_group=cb),
+            # Atómico: los campos de la sintonía (wn, ζ, ε o los polos)
+            # llegan juntos y se validan como un conjunto.
+            'parametros': self.create_client(
+                SetParametersAtomically, f'{ctrl}/set_parameters_atomically',
+                callback_group=cb),
         }
         self.acc_mover = ActionClient(self, MoverA, f'{ctrl}/mover_a',
                                       callback_group=cb)
@@ -218,6 +220,11 @@ class NodoGui(Node):
             'phi_hat': list(m.phi_hat), 'kappa': list(m.kappa),
             'wn': list(m.wn),
             'polos': [list(m.polos[4 * i:4 * i + 4]) for i in range(n)],
+            'polos_imag': [list(m.polos_imag[4 * i:4 * i + 4])
+                           for i in range(n)],
+            'sintonia': list(m.sintonia),
+            'wn_sintonia': list(m.wn_sintonia), 'zeta': list(m.zeta),
+            'eps': list(m.eps), 'zeta_observador': list(m.zeta_observador),
             'beta': list(m.beta), 'alfa': list(m.alfa),
             'armadura': list(m.armadura),
             'alfa_gravedad': list(m.alfa_gravedad),
@@ -324,7 +331,7 @@ class NodoGui(Node):
         return False, f'Acción desconocida: {accion}', {}
 
     def _parametros(self, params: dict):
-        req = SetParameters.Request()
+        req = SetParametersAtomically.Request()
         for nombre, valor in params.items():
             v = ParameterValue()
             if isinstance(valor, bool):
@@ -340,10 +347,8 @@ class NodoGui(Node):
                                           str(valor))
             req.parameters.append(ParamMsg(name=str(nombre), value=v))
         r = self._llamar('parametros', req)
-        errores = [f'{p.name}: {res.reason}' for p, res in
-                   zip(req.parameters, r.results) if not res.successful]
-        if errores:
-            return False, 'Rechazado: ' + '; '.join(errores), {}
+        if not r.result.successful:
+            return False, f'Rechazado: {r.result.reason}', {}
         return True, f'Aplicado: {", ".join(params)}', {}
 
     def _mover(self, d: dict):

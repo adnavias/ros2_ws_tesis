@@ -53,7 +53,7 @@ def test_limite_por_encima_de_corriente_continua(cargar):
 
 
 def test_polo_demasiado_rapido(cargar):
-    with pytest.raises(C.ErrorConfig, match='λ·dt'):
+    with pytest.raises(C.ErrorConfig, match=r'\|λ\|·dt'):
         cargar('sim', extra={'por_defecto': {'polos': [10.0, 10.0, 150.0,
                                                        150.0]}})
 
@@ -61,6 +61,30 @@ def test_polo_demasiado_rapido(cargar):
 def test_polos_desde_wn():
     assert C.polos_desde({'wn': 5.0, 'relacion_observador': 4.0}) == \
         [5.0, 5.0, 20.0, 20.0]
+
+
+def test_sintonia_por_defecto_es_polos(cargar):
+    st = cargar('sim').articulacion('Joint_2').sintonia
+    assert st.modo == 'polos'
+    assert list(st.polos) == pytest.approx([8.0, 8.0, 32.0, 32.0])
+    assert (st.wn, st.zeta, st.eps) == pytest.approx((8.0, 1.0, 0.25))
+
+
+def test_sintonia_zeta_por_articulacion(cargar):
+    cfg = cargar('sim', extra={'articulaciones': {'Joint_3': {
+        'sintonia': 'zeta', 'wn': 6.0, 'zeta': 0.9, 'eps': 0.2}}})
+    st = cfg.articulacion('Joint_3').sintonia
+    assert st.modo == 'zeta' and st.wn == pytest.approx(6.0)
+    assert not st.polos_reales()
+    assert cfg.articulacion('Joint_2').sintonia.modo == 'polos'
+
+
+@pytest.mark.parametrize('malo', [{'sintonia': 'lqr'},
+                                  {'sintonia': 'zeta', 'eps': 2.0},
+                                  {'sintonia': 'zeta', 'zeta': 0.0}])
+def test_sintonia_invalida(cargar, malo):
+    with pytest.raises(C.ErrorConfig):
+        cargar('sim', extra={'articulaciones': {'Joint_2': malo}})
 
 
 def test_parsear_estados():

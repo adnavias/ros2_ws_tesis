@@ -30,8 +30,14 @@ float64[] mando_valor        # A, N·m o posición enviada
 float64[] limite_mando
 float64[] phi_hat            # perturbación estimada [rad/s^2]
 float64[] kappa              # M_ctrl/M_real estimado (NaN = sin datos)
-float64[] wn                 # polo más lento [rad/s]
-float64[] polos              # 4 por articulación, aplanado
+float64[] wn                 # ancho de banda de referencia [rad/s]
+float64[] polos              # -Re de los 4 polos por articulación, aplanado
+float64[] polos_imag         # Im de los 4 polos (0 si son reales), aplanado
+string[] sintonia            # polos | zeta ("" si no usa GPI)
+float64[] wn_sintonia        # vista (ζ, wn, ε): wn del par lento [rad/s]
+float64[] zeta               # amortiguamiento del par lento
+float64[] eps                # wn / w_observador
+float64[] zeta_observador    # 0 = igual a zeta
 float64[] beta
 float64[] alfa
 float64[] armadura

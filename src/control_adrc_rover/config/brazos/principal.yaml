@@ -55,10 +55,22 @@ motores:
 por_defecto:
   estado: "activa"               # activa | bloqueada | ausente
   mando: "corriente_con_modelo"  # corriente_con_modelo | torque_sin_modelo | posicion_directa
-  # Polos del lazo GPI (rad/s), los 4 reales: p(s) = Π (s + λi).
-  # [wn, wn, 4 wn, 4 wn] con wn = 8: sin sobreimpulso y estable para
-  # 0.15 < kappa < ~3 con 1-2 muestras de retardo (ver la guía, sec. 10.3).
+  # Ganancias del GPI. Dos formas (se elige con `sintonia`; cada
+  # articulación puede usar la suya):
+  #   sintonia: "polos" -> los 4 polos reales λi [rad/s]: p(s) = Π (s + λi)
+  #   sintonia: "zeta"  -> p(s) = (s²+2ζ wn s+wn²)(s²+2ζo wp s+wp²),
+  #                        wp = wn/eps, ζo = zeta_observador (0 = ζ)
+  # [8, 8, 32, 32] es lo mismo que wn 8.0, zeta 1.0, eps 0.25: sin
+  # sobreimpulso y estable para 0.15 < kappa < ~3 con 1-2 muestras de
+  # retardo (ver la guía, sec. 10.3 y 13.1). Con zeta < 1 los polos son
+  # complejos y el error puede sobrepasar; con zeta > 1 el polo más lento
+  # queda en wn (ζ - sqrt(ζ²-1)) y la convergencia se hace más lenta.
+  sintonia: "polos"
   polos: [8.0, 8.0, 32.0, 32.0]
+  wn: 8.0                        # (modo zeta) ancho de banda del lazo [rad/s]
+  zeta: 1.0                      # (modo zeta) amortiguamiento del par lento
+  eps: 0.25                      # (modo zeta) wn / w_observador, 0 < eps <= 1
+  zeta_observador: 0.0           # (modo zeta) 0 = igual a zeta
   beta: 1.0                      # control con beta * M (beta <= 1)
   ancho_friccion: 0.1            # [A] suavizado de la compensación
   pendiente_max: 200.0           # [A/s] límite de pendiente del mando

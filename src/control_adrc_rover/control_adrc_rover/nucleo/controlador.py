@@ -44,7 +44,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import numpy as np
 
 from .config import ConfigBrazo
-from .gpi import GPI
+from .gpi import GPI, Sintonia
 from .modelo import ModeloBrazo, calibrar, escalar_beta
 from .seguridad import (EstimadorVelocidad, LimitadorPendiente,
                         SanidadEncoder, aceleracion_pared, validar_objetivo)
@@ -158,7 +158,7 @@ class Controlador:
         self.alfa_g = np.array([a.alfa_gravedad for a in gpi_arts])
         self.es_corriente = np.array([a.mando == 'corriente_con_modelo'
                                       for a in gpi_arts])
-        self.gpi = GPI(np.array([a.polos for a in gpi_arts]).reshape(-1, 4),
+        self.gpi = GPI([a.sintonia for a in gpi_arts],
                        float(lazo['antiwindup_ganancia']))
         self.wn_inicial = self.gpi.wn().copy()
         self.pendiente = LimitadorPendiente([a.pendiente_max
@@ -747,8 +747,18 @@ class Controlador:
     # Ajustes en vivo
     # ------------------------------------------------------------------
     def fijar_polos(self, nombre: str, polos) -> None:
-        """Cambia los polos de una articulación GPI."""
-        self.gpi.fijar_polos(self.nombres_gpi_index(nombre), polos)
+        """Cambia los polos de una articulación GPI (modo polos)."""
+        self.fijar_sintonia(nombre, Sintonia.desde_polos(polos))
+
+    def fijar_sintonia(self, nombre: str, sintonia: Sintonia) -> None:
+        """Cambia la sintonía (polos o ζ, wn, ε) de una articulación GPI.
+
+        También se toma como el nuevo wn inicial para el piso del
+        supervisor (lo eligió el usuario).
+        """
+        g = self.nombres_gpi_index(nombre)
+        self.gpi.fijar_sintonia(g, sintonia)
+        self.wn_inicial[g] = self.gpi.wn()[g]
 
     def fijar(self, nombre: str, campo: str, valor: float) -> None:
         """Cambia beta, alfa, armadura, alfa_gravedad, friccion_coulomb o

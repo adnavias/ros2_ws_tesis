@@ -84,7 +84,7 @@ class Autotune:
             raise ValueError(f'El control está "{c.estado}"; habilítalo '
                              f'antes del autotuning')
         self._guardado = {
-            'polos': c.gpi.polos.copy(), 'beta': c.beta.copy(),
+            'sintonias': list(c.gpi.sintonias), 'beta': c.beta.copy(),
             'alfa': c.alfa.copy(), 'armadura': c.armadura.copy(),
             'fc': c.fc.copy(), 'alfa_g': c.alfa_g.copy(),
             'factor_limite': c.factor_limite.copy(),
@@ -150,7 +150,7 @@ class Autotune:
                 c.fc[:] = gd['fc']
                 c.alfa_g[:] = gd['alfa_g']
                 for g in range(c.gpi.m):
-                    c.gpi.fijar_polos(g, gd['polos'][g])
+                    c.gpi.fijar_sintonia(g, gd['sintonias'][g])
         if c.observador == self.paso:
             c.observador = None
         if c.estado == 'habilitado' and c.traj.active:
@@ -287,13 +287,17 @@ class Autotune:
         for nom, g, k in zip(self.nombres, self.g, self.k):
             if nom not in calibradas:
                 continue
-            forma = c.gpi.polos[g] / c.gpi.polos[g].min()
-            wn = float(c.gpi.polos[g].min())
+            # Se conserva la forma (relación entre polos, o ζ y ε) y sólo
+            # se mueve el ancho de banda wn.
+            forma = c.gpi.sintonias[g]
+            wn = forma.wn_efectivo()
             wn_falla = None
             while True:
-                if max(forma) * wn * dt > 0.5:
+                try:
+                    forma.con_wn(wn).validar(dt)
+                except ValueError:
                     break
-                c.gpi.fijar_polos(g, forma * wn)
+                c.gpi.fijar_wn(g, wn)
                 self.etapa = f'ancho de banda: {nom}, wn = {wn:.1f} rad/s'
                 centro = float(c.q_d[k])
                 fallo = False
@@ -321,9 +325,12 @@ class Autotune:
                 wn *= paso_wn
             base = wn_falla if wn_falla is not None else min(wn, wn_max)
             wn_final = max(float(c.supervisor.wn_min), (1.0 - margen) * base)
-            c.gpi.fijar_polos(g, forma * wn_final)
+            c.gpi.fijar_sintonia(g, forma.con_wn(wn_final))
+            final = c.gpi.sintonias[g]
+            c.wn_inicial[g] = final.wn_efectivo()
             self.resultados[nom]['polos'] = [round(float(p), 3)
-                                             for p in forma * wn_final]
+                                             for p in final.polos]
+            self.resultados[nom]['sintonia'] = final.describir()
             self.resultados[nom]['wn_oscilacion'] = (
                 None if wn_falla is None else round(wn_falla, 2))
             self.log(f'Autotune {nom}: wn final {wn_final:.2f} rad/s '

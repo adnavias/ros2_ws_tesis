@@ -173,7 +173,14 @@ function construir(e) {
   e.nombres.forEach((n, k) => {
     if (e.mando[k] === 'posicion_directa') return;
     const celdas = [el('td', { text: n })];
+    const sel = el('select', { id: `sin-${n}` });
+    for (const o of ['polos', 'zeta']) sel.appendChild(el('option', { value: o, text: o }));
+    sel.value = e.sintonia && e.sintonia[k] ? e.sintonia[k] : 'polos';
+    sel.onchange = () => { S.sucias.add(`sin-${n}`); modoSintonia(n); };
+    celdas.push(el('td', {}, [sel]));
     for (let p = 0; p < 4; p++) celdas.push(el('td', {}, [numInput(`pol-${n}-${p}`, e.polos[k][p], 0.5)]));
+    for (const [c, paso] of [['wn', 0.5], ['zeta', 0.05], ['eps', 0.01], ['zeta_observador', 0.05]])
+      celdas.push(el('td', {}, [numInput(`zt-${n}-${c}`, null, paso)]));
     for (const c of ['beta', 'alfa', 'armadura', 'alfa_gravedad', 'friccion_coulomb', 'limite_mando'])
       celdas.push(el('td', {}, [numInput(`gan-${n}-${c}`, null, 0.01)]));
     celdas.push(el('td', { class: 'num', id: `kap-${n}` }));
@@ -183,6 +190,7 @@ function construir(e) {
     b.onclick = () => aplicarGanancias(n);
     celdas.push(el('td', {}, [b]));
     tg.appendChild(el('tr', {}, celdas));
+    modoSintonia(n);
   });
 
   // autotune
@@ -226,7 +234,18 @@ function actualizar(e) {
   e.nombres.forEach((n, k) => {
     const a = $(`act-${n}`); if (a) a.textContent = fmt(e.posicion_deg[k]) + '°';
     if (e.mando[k] === 'posicion_directa') return;
-    for (let p = 0; p < 4; p++) fijarSiLibre(`pol-${n}-${p}`, e.polos[k][p], 3);
+    if (e.sintonia && !S.sucias.has(`sin-${n}`) && libre(`sin-${n}`) && $(`sin-${n}`)) {
+      if ($(`sin-${n}`).value !== e.sintonia[k]) { $(`sin-${n}`).value = e.sintonia[k]; modoSintonia(n); }
+    }
+    for (let p = 0; p < 4; p++) {
+      fijarSiLibre(`pol-${n}-${p}`, e.polos[k][p], 3);
+      const im = e.polos_imag ? e.polos_imag[k][p] : 0; const i = $(`pol-${n}-${p}`);
+      if (i) i.title = Math.abs(im) > 1e-9 ? `polo complejo: −${fmt(e.polos[k][p])} ${im >= 0 ? '+' : '−'} ${fmt(Math.abs(im))}j` : '';
+    }
+    if (e.zeta) {
+      fijarSiLibre(`zt-${n}-wn`, e.wn_sintonia[k], 3); fijarSiLibre(`zt-${n}-zeta`, e.zeta[k], 3);
+      fijarSiLibre(`zt-${n}-eps`, e.eps[k], 4); fijarSiLibre(`zt-${n}-zeta_observador`, e.zeta_observador[k], 3);
+    }
     for (const c of ['beta', 'alfa', 'armadura', 'alfa_gravedad', 'friccion_coulomb']) fijarSiLibre(`gan-${n}-${c}`, e[c][k], 4);
     fijarSiLibre(`gan-${n}-limite_mando`, e.limite_mando[k], 3);
     const kap = $(`kap-${n}`); if (kap) kap.textContent = fmt(e.kappa[k]);
@@ -264,16 +283,32 @@ function moverTodas() {
   if (!Object.keys(pos).length) { toast('No hay objetivos escritos', true); return; }
   comando('mover', { posiciones_deg: pos, velocidad_pct: Number($('in-pct').value) });
 }
+function modoSintonia(n) {
+  const zeta = $(`sin-${n}`).value === 'zeta';
+  for (let p = 0; p < 4; p++) $(`pol-${n}-${p}`).disabled = zeta;
+  for (const c of ['wn', 'zeta', 'eps', 'zeta_observador']) $(`zt-${n}-${c}`).disabled = !zeta;
+}
 async function aplicarGanancias(n) {
-  const p = {}; const pol = [];
-  for (let k = 0; k < 4; k++) pol.push(Number($(`pol-${n}-${k}`).value));
-  if (pol.some((x) => !(x > 0))) { toast('Los 4 polos deben ser positivos', true); return; }
-  p[`${n}.polos`] = pol;
+  const p = {}; const modo = $(`sin-${n}`).value;
+  p[`${n}.sintonia`] = modo;
+  if (modo === 'polos') {
+    const pol = [];
+    for (let k = 0; k < 4; k++) pol.push(Number($(`pol-${n}-${k}`).value));
+    if (pol.some((x) => !(x > 0))) { toast('Los 4 polos deben ser positivos', true); return; }
+    p[`${n}.polos`] = pol;
+  } else {
+    const z = {};
+    for (const c of ['wn', 'zeta', 'eps', 'zeta_observador']) z[c] = Number($(`zt-${n}-${c}`).value || 0);
+    if (!(z.wn > 0)) { toast('ωn debe ser > 0', true); return; }
+    if (!(z.eps > 0 && z.eps <= 1)) { toast('ε debe estar en (0, 1]', true); return; }
+    if (!(z.zeta >= 0.2 && z.zeta <= 5)) { toast('ζ debe estar en [0.2, 5]', true); return; }
+    for (const c of ['wn', 'zeta', 'eps', 'zeta_observador']) p[`${n}.${c}`] = z[c];
+  }
   for (const c of ['beta', 'alfa', 'armadura', 'alfa_gravedad', 'friccion_coulomb', 'limite_mando']) {
     const v = $(`gan-${n}-${c}`).value; if (v !== '') p[`${n}.${c}`] = Number(v);
   }
   const r = await comando('parametros', { parametros: p });
-  if (r.ok) for (const id of [...S.sucias]) if (id.includes(`-${n}-`)) S.sucias.delete(id);
+  if (r.ok) for (const id of [...S.sucias]) if (id.includes(`-${n}-`) || id === `sin-${n}`) S.sucias.delete(id);
 }
 function estadosTexto() {
   return S.estado.nombres_perfil.map((n) => `${n}=${$(`est-${n}`).value}`).join(',');

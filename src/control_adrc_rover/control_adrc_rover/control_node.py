@@ -36,8 +36,9 @@ Interfaces (prefijo ~ = /adrc_simple/):
     Acciones
         ~/mover_a (MoverA), ~/autotune (Autotune)
     Parámetros dinámicos (validados)
-        <J>.polos, <J>.beta, <J>.alfa, <J>.armadura, <J>.alfa_gravedad,
-        <J>.friccion_coulomb, <J>.limite_mando, velocidad_pct_defecto,
+        <J>.sintonia (polos | zeta), <J>.polos, <J>.wn, <J>.zeta,
+        <J>.eps, <J>.zeta_observador, <J>.beta, <J>.alfa, <J>.armadura,
+        <J>.alfa_gravedad, <J>.friccion_coulomb, <J>.limite_mando, velocidad_pct_defecto,
         shaper.tipo, shaper.frecuencia_hz, shaper.amortiguamiento,
         shaper.tolerancia_ei, supervisor.habilitado
 
@@ -75,6 +76,7 @@ from control_adrc_interfaces.srv import CargarPerfil, GuardarConfiguracion
 from control_adrc_rover.nucleo import config as cfgmod
 from control_adrc_rover.nucleo.autotune import Autotune
 from control_adrc_rover.nucleo.controlador import Controlador
+from control_adrc_rover.nucleo.gpi import MODOS_SINTONIA, Sintonia
 from control_adrc_rover.nucleo.shaper import estimar_modo
 from control_adrc_rover.rutas import ruta_ajustes, ruta_capa
 
@@ -97,6 +99,13 @@ RANGOS = {'beta': (0.05, 1.5), 'alfa': (0.05, 20.0), 'armadura': (0.0, 20.0),
           'alfa_gravedad': (0.0, 3.0), 'friccion_coulomb': (0.0, 5.0),
           'limite_mando': (0.01, 1e9)}
 CAMPOS_ARTICULACION = tuple(RANGOS)
+# Campos que definen la sintonía del GPI. Si en una misma llamada llegan
+# varios de una articulación se combinan: `polos` pasa a modo polos,
+# wn/zeta/eps/zeta_observador pasan a modo zeta, y `sintonia` elige el
+# modo explícitamente (los valores que no lleguen se toman de la vista
+# equivalente de la sintonía actual).
+CAMPOS_SINTONIA = ('sintonia', 'polos', 'wn', 'zeta', 'eps',
+                   'zeta_observador')
 
 
 class NodoControl(NodoBase):
@@ -393,9 +402,25 @@ class NodoControl(NodoBase):
             for g, k in enumerate(c.k_gpi):
                 a = c.movibles[k]
                 n = a.nombre
-                self._declarar(f'{n}.polos', [float(p) for p in
-                                              c.gpi.polos[g]],
-                               'Polos reales λ1..λ4 del GPI [rad/s]')
+                st = c.gpi.sintonias[g]
+                self._declarar(f'{n}.sintonia', st.modo,
+                               'Cómo se eligen las ganancias: polos | zeta')
+                self._declarar(f'{n}.polos', [float(p) for p in st.polos],
+                               'Polos reales λ1..λ4 del GPI [rad/s] '
+                               '(modo polos)')
+                self._declarar(f'{n}.wn', float(st.wn),
+                               'Ancho de banda del lazo [rad/s] (modo zeta)',
+                               (0.1, 200.0))
+                self._declarar(f'{n}.zeta', float(st.zeta),
+                               'Amortiguamiento del par lento (modo zeta)',
+                               (0.2, 5.0))
+                self._declarar(f'{n}.eps', float(st.eps),
+                               'wn / w_observador, 0 < eps <= 1 (modo zeta)',
+                               (0.01, 1.0))
+                self._declarar(f'{n}.zeta_observador',
+                               float(st.zeta_observador),
+                               'Amortiguamiento del observador (0 = zeta)',
+                               (0.0, 5.0))
                 self._declarar(f'{n}.beta', float(c.beta[g]),
                                'Margen de inercia (control con beta*M)',
                                RANGOS['beta'])
@@ -426,6 +451,10 @@ class NodoControl(NodoBase):
             self._declarar('supervisor.habilitado',
                            bool(cfg.supervisor['habilitado']),
                            'Supervisor que baja wn si hay sobreimpulso')
+            self._sintonias_publicadas = list(c.gpi.sintonias)
+            for g, k in enumerate(c.k_gpi):
+                for aviso in c.gpi.sintonias[g].advertencias():
+                    self.get_logger().warning(f'{c.nombres[k]}: {aviso}')
         finally:
             self._cargando_params = False
 
@@ -443,6 +472,7 @@ class NodoControl(NodoBase):
             return SetParametersResult(successful=True)
         c = self.ctrl
         cambios = []
+        sintonias: Dict[str, dict] = {}
         for p in params:
             nombre = p.name
             if nombre in ('brazo', 'plataforma', 'archivo_ajustes',
@@ -466,11 +496,20 @@ class NodoControl(NodoBase):
                         c.supervisor, 'habilitado', v))
                 elif '.' in nombre:
                     art, campo = nombre.split('.', 1)
-                    cambios.append(self._cambio_articulacion(art, campo,
-                                                             p.value))
+                    if campo in CAMPOS_SINTONIA:
+                        sintonias.setdefault(art, {})[campo] = p.value
+                    else:
+                        cambios.append(self._cambio_articulacion(
+                            art, campo, p.value))
             except (ValueError, KeyError, RuntimeError) as exc:
                 return SetParametersResult(successful=False,
                                            reason=f'{nombre}: {exc}')
+        for art, campos in sintonias.items():
+            try:
+                cambios.append(self._cambio_sintonia(art, campos))
+            except (ValueError, KeyError, TypeError) as exc:
+                return SetParametersResult(successful=False,
+                                           reason=f'{art}: {exc}')
         with self.lock:
             for aplicar in cambios:
                 if aplicar is not None:
@@ -482,17 +521,6 @@ class NodoControl(NodoBase):
         if art not in c.nombres:
             return None
         a = c.movibles[c.nombres.index(art)]
-        if campo == 'polos':
-            polos = [float(x) for x in valor]
-            if len(polos) != 4 or any(x <= 0.0 for x in polos):
-                raise ValueError('se necesitan 4 polos positivos')
-            if max(polos) * c.dt_nominal > 0.5:
-                raise ValueError(f'polo {max(polos):.1f} rad/s demasiado '
-                                 f'rápido para {1 / c.dt_nominal:.0f} Hz '
-                                 f'(λ·dt > 0.5)')
-            if min(polos) < 0.5:
-                raise ValueError('el polo más lento debe ser >= 0.5 rad/s')
-            return lambda: c.fijar_polos(art, polos)
         if campo in CAMPOS_ARTICULACION:
             v = float(valor)
             lo, hi = RANGOS[campo]
@@ -507,6 +535,59 @@ class NodoControl(NodoBase):
                     f'amortiguamiento (ver guía)')
             return lambda: c.fijar(art, campo, v)
         raise ValueError(f'campo desconocido "{campo}"')
+
+    def _cambio_sintonia(self, art: str, campos: dict):
+        """Nueva sintonía de `art` a partir de los campos que llegaron."""
+        c = self.ctrl
+        if art not in c.nombres:
+            return None
+        k = c.nombres.index(art)
+        if k not in c.k_gpi:
+            raise ValueError('no usa el lazo GPI')
+        actual = c.gpi.sintonias[list(c.k_gpi).index(k)].completa()
+        modo = campos.get('sintonia')
+        if modo is None:
+            modo = 'polos' if 'polos' in campos else 'zeta'
+        modo = str(modo)
+        if modo not in MODOS_SINTONIA:
+            raise ValueError(f'sintonia="{modo}" no válida; usa '
+                             f'{list(MODOS_SINTONIA)}')
+        if modo == 'polos':
+            polos = [float(x) for x in campos.get('polos', actual.polos)]
+            if len(polos) != 4:
+                raise ValueError('se necesitan 4 polos')
+            if modo != actual.modo and 'polos' not in campos and \
+                    not actual.polos_reales():
+                raise ValueError('con zeta < 1 los polos son complejos; '
+                                 'escribe los 4 polos reales que quieras')
+            nueva = Sintonia.desde_polos(polos)
+        else:
+            nueva = Sintonia.desde_zeta(
+                float(campos.get('wn', actual.wn)),
+                float(campos.get('zeta', actual.zeta)),
+                float(campos.get('eps', actual.eps)),
+                float(campos.get('zeta_observador',
+                                 actual.zeta_observador)))
+        nueva.validar(c.dt_nominal, wn_min=0.5)
+        for aviso in nueva.advertencias():
+            self.get_logger().warning(f'{art}: {aviso}')
+
+        def aplicar(nueva=nueva):
+            c.fijar_sintonia(art, nueva)
+            self.get_logger().info(f'{art}: sintonía {nueva.describir()} '
+                                   f'(polos {self._texto_polos(nueva)})')
+        return aplicar
+
+    @staticmethod
+    def _texto_polos(s: Sintonia) -> str:
+        """Polos como texto: '8.00, 8.00, ...' o '5.60±5.71j, ...'."""
+        partes = []
+        for z in s.raices():
+            if z.imag < -1e-9:
+                continue          # el conjugado ya se escribió con ±
+            im = f'±{z.imag:.2f}j' if z.imag > 1e-9 else ''
+            partes.append(f'{-z.real:.2f}{im}')
+        return ', '.join(partes)
 
     def _cambio_shaper(self, nombre: str, valor):
         c = self.ctrl
@@ -568,7 +649,20 @@ class NodoControl(NodoBase):
             self._k_paso += 1
             if self._k_paso % self._n_diag == 0:
                 self._publicar_diagnostico()
+        if self._k_paso % self._n_diag == 0:
+            self._revisar_sintonias()
         self._log_periodico()
+
+    def _revisar_sintonias(self) -> None:
+        """Si el supervisor, el autotuning o un cambio de modo movieron la
+        sintonía, copia los valores a los parámetros ROS (vista polos y
+        vista ζ siempre coherentes)."""
+        c = self.ctrl
+        previas = getattr(self, '_sintonias_publicadas', None)
+        if c is None or previas is None:
+            return
+        if previas != c.gpi.sintonias:
+            self._refrescar_parametros()
 
     def _tiempo_medicion(self, msg: JointState) -> float:
         st = msg.header.stamp
@@ -675,6 +769,18 @@ class NodoControl(NodoBase):
         polos = np.full((ctrl.n, 4), np.nan)
         polos[ctrl.k_gpi] = ctrl.gpi.polos
         m.polos = f(polos.ravel())
+        polos[ctrl.k_gpi] = ctrl.gpi.polos_imag
+        m.polos_imag = f(polos.ravel())
+        st = [None] * ctrl.n
+        for g, k in enumerate(ctrl.k_gpi):
+            st[k] = ctrl.gpi.sintonias[g]
+        m.sintonia = [s.modo if s else '' for s in st]
+        nan = float('nan')
+        m.zeta = [float(s.zeta) if s else nan for s in st]
+        m.eps = [float(s.eps) if s else nan for s in st]
+        m.zeta_observador = [float(s.zeta_observador) if s else nan
+                             for s in st]
+        m.wn_sintonia = [float(s.wn) if s else nan for s in st]
         m.beta = f(d.beta)
         for campo, arr in (('alfa', ctrl.alfa), ('armadura', ctrl.armadura),
                            ('alfa_gravedad', ctrl.alfa_g),
@@ -902,15 +1008,15 @@ class NodoControl(NodoBase):
         arts: Dict[str, dict] = {}
         for g, k in enumerate(c.k_gpi):
             n = c.nombres[k]
-            arts[n] = {
-                'polos': [round(float(p), 4) for p in c.gpi.polos[g]],
+            arts[n] = dict(c.gpi.sintonias[g].a_dict())
+            arts[n].update({
                 'beta': round(float(c.beta[g]), 4),
                 'alfa': round(float(c.alfa[g]), 4),
                 'armadura': round(float(c.armadura[g]), 4),
                 'alfa_gravedad': round(float(c.alfa_g[g]), 4),
                 'friccion_coulomb': round(float(c.fc[g]), 4),
                 'limite_mando': round(float(c.limite[g]), 4),
-            }
+            })
         if incluir_estados:
             for a in self.cfg.articulaciones:
                 arts.setdefault(a.nombre, {})['estado'] = a.estado
@@ -1137,9 +1243,16 @@ class NodoControl(NodoBase):
         params = []
         for g, k in enumerate(c.k_gpi):
             n = c.nombres[k]
+            st = c.gpi.sintonias[g]
+            params.append(Parameter(f'{n}.sintonia',
+                                    Parameter.Type.STRING, st.modo))
             params.append(Parameter(f'{n}.polos',
                                     Parameter.Type.DOUBLE_ARRAY,
-                                    [float(p) for p in c.gpi.polos[g]]))
+                                    [float(p) for p in st.polos]))
+            for campo in ('wn', 'zeta', 'eps', 'zeta_observador'):
+                params.append(Parameter(f'{n}.{campo}',
+                                        Parameter.Type.DOUBLE,
+                                        float(getattr(st, campo))))
             for campo, arr in (('beta', c.beta), ('alfa', c.alfa),
                                ('armadura', c.armadura),
                                ('alfa_gravedad', c.alfa_g),
@@ -1152,6 +1265,7 @@ class NodoControl(NodoBase):
             self.set_parameters(params)
         finally:
             self._cargando_params = False
+        self._sintonias_publicadas = list(c.gpi.sintonias)
 
 
 def main(args=None) -> None:

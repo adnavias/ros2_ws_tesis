@@ -41,6 +41,8 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from .gpi import MODOS_SINTONIA, Sintonia
+
 ESTADOS = ('activa', 'bloqueada', 'ausente')
 MANDOS = ('corriente_con_modelo', 'torque_sin_modelo', 'posicion_directa')
 ENCODERS = ('incremental', 'absoluto')
@@ -132,8 +134,8 @@ class Articulacion:
     v_max_fisica: float
     a_max_100pct: float
     jerk_max_100pct: float
-    # Control (GPI)
-    polos: List[float]
+    # Control (GPI): por polos o por (ζ, wn, ε)
+    sintonia: Sintonia
     beta: float
     # Calibración (autotune; editables a mano)
     alfa: float
@@ -150,6 +152,11 @@ class Articulacion:
     limite_inferior: float = -math.inf
     limite_superior: float = math.inf
     continua: bool = False
+
+    @property
+    def polos(self) -> List[float]:
+        """-Re de los 4 polos (= λi si son reales)."""
+        return list(self.sintonia.polos)
 
     @property
     def movible(self) -> bool:
@@ -245,9 +252,13 @@ DEFAULTS_ARTICULACION: Dict[str, Any] = {
     'v_max_fisica': 1.0,
     'a_max_100pct': 2.0,
     'jerk_max_100pct': 0.0,
+    'sintonia': None,              # polos | zeta (None: polos)
     'polos': [],
     'wn': 10.0,
-    'relacion_observador': 5.0,
+    'zeta': 1.0,
+    'eps': 0.25,
+    'zeta_observador': 0.0,        # <= 0: igual a zeta
+    'relacion_observador': 5.0,    # sólo si no hay `polos` (formato viejo)
     'beta': 1.0,
     'alfa': 1.0,
     'armadura': None,
@@ -375,6 +386,36 @@ def polos_desde(datos: dict) -> List[float]:
     return [wn, wn, r * wn, r * wn]
 
 
+def sintonia_desde(datos: dict, ctx: str = '') -> Sintonia:
+    """Sintonía de una articulación.
+
+    sintonia: "polos" (o sin indicar) -> `polos` (o wn y la relación, el
+    formato viejo); sintonia: "zeta" -> wn, zeta, eps, zeta_observador.
+    """
+    modo = datos.get('sintonia') or 'polos'
+    if modo not in MODOS_SINTONIA:
+        raise ErrorConfig(f'{ctx}: sintonia="{modo}" no válida; usa '
+                          f'{list(MODOS_SINTONIA)}')
+    try:
+        if modo == 'polos':
+            polos = polos_desde(datos)
+            if len(polos) != 4:
+                raise ValueError(f'"polos" debe tener 4 valores (llegaron '
+                                 f'{len(polos)})')
+            s = Sintonia(modo='polos', polos=tuple(polos))
+        else:
+            s = Sintonia(modo='zeta', wn=_num(datos['wn'], 'wn', ctx),
+                         zeta=_num(datos['zeta'], 'zeta', ctx),
+                         eps=_num(datos['eps'], 'eps', ctx),
+                         zeta_observador=_num(
+                             datos.get('zeta_observador') or 0.0,
+                             'zeta_observador', ctx))
+        s.validar()
+    except ValueError as exc:
+        raise ErrorConfig(f'{ctx}: {exc}') from None
+    return s.completa()
+
+
 def construir(capas: List[dict], nombres_archivo: List[str],
               montadas: int = 0, estados: Optional[Dict[str, str]] = None,
               buscar_paquete=None) -> ConfigBrazo:
@@ -480,13 +521,7 @@ def _construir_articulacion(nom: str, idx: int, d: dict,
     fc = d.get('friccion_coulomb')
     fc = i0 if fc is None else _num(fc, 'friccion_coulomb', ctx)
 
-    polos = polos_desde(d)
-    if len(polos) != 4:
-        raise ErrorConfig(f'{ctx}: "polos" debe tener 4 valores (llegaron '
-                          f'{len(polos)})')
-    if any(p <= 0.0 for p in polos):
-        raise ErrorConfig(f'{ctx}: todos los polos deben ser positivos '
-                          f'(son -λ en el plano s); llegaron {polos}')
+    sintonia = sintonia_desde(d, ctx)
 
     signo = _num(d['signo'], 'signo', ctx)
     if signo not in (1.0, -1.0):
@@ -518,7 +553,7 @@ def _construir_articulacion(nom: str, idx: int, d: dict,
         v_max_fisica=_num(d['v_max_fisica'], 'v_max_fisica', ctx),
         a_max_100pct=_num(d['a_max_100pct'], 'a_max_100pct', ctx),
         jerk_max_100pct=_num(d['jerk_max_100pct'], 'jerk_max_100pct', ctx),
-        polos=polos, beta=_num(d['beta'], 'beta', ctx),
+        sintonia=sintonia, beta=_num(d['beta'], 'beta', ctx),
         alfa=_num(d['alfa'], 'alfa', ctx), armadura=armadura,
         friccion_coulomb=fc,
         alfa_gravedad=_num(d['alfa_gravedad'], 'alfa_gravedad', ctx),
@@ -554,12 +589,12 @@ def validar(cfg: ConfigBrazo) -> None:
         raise ErrorConfig('lazo.frecuencia_control debe ser > 0')
     dt = 1.0 / f
     for a in cfg.articulaciones:
-        if a.usa_gpi and max(a.polos) * dt > 0.5:
-            raise ErrorConfig(
-                f'articulaciones.{a.nombre}: el polo más rápido '
-                f'({max(a.polos):.1f} rad/s) da λ·dt = '
-                f'{max(a.polos) * dt:.2f} > 0.5 a {f:.0f} Hz. Baja los polos '
-                f'o sube la frecuencia.')
+        if a.usa_gpi:
+            try:
+                a.sintonia.validar(dt)
+            except ValueError as exc:
+                raise ErrorConfig(f'articulaciones.{a.nombre}: {exc}. O sube '
+                                  f'la frecuencia.') from None
     _elegir(cfg.interfaz['tipo_mando'], TIPOS_MANDO_ROS, 'tipo_mando',
             'interfaz')
     _elegir(cfg.shaper['tipo'], SHAPERS, 'tipo', 'shaper')
