@@ -1,0 +1,11 @@
+# Autotuning: identificación (alfa, armadura, fricción), beta y wn.
+string[] articulaciones    # vacío = todas las que tienen modelo
+bool aplicar               # true: deja aplicados los resultados
+bool guardar               # true: además los guarda en el YAML de ajustes
+---
+bool exito
+string mensaje
+string resultados_yaml
+---
+float64 progreso
+string etapa

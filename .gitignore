@@ -8,3 +8,7 @@ __pycache__/
 *:Zone.Identifier
 *.bak
 *.zip
+*.patch
+*.orig
+*.rej
+.pytest_cache/

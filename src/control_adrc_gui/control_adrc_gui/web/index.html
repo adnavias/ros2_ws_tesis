@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Control del brazo</title>
+<link rel="stylesheet" href="/web/app.css">
+</head>
+<body>
+
+<!-- ============ Barra superior: estado y PARO (siempre visible) ============ -->
+<header class="barra">
+  <div class="identidad">
+    <div class="titulo">Control del brazo</div>
+    <div class="sub"><span id="brazo">—</span> · <span id="plataforma">—</span></div>
+  </div>
+  <div class="insignias">
+    <span class="insignia" id="b-conexion">sin conexión</span>
+    <span class="insignia" id="b-estado">—</span>
+    <span class="insignia" id="b-watchdog">watchdog —</span>
+    <span class="insignia" id="b-saturacion">saturación —</span>
+    <span class="insignia" id="b-calibracion">calibración off</span>
+  </div>
+  <div class="acciones-estado">
+    <button id="btn-habilitar" class="btn">Habilitar</button>
+    <button id="btn-deshabilitar" class="btn">Deshabilitar</button>
+    <button id="btn-liberar" class="btn advertencia">Liberar paro</button>
+  </div>
+  <button id="btn-paro" class="paro" title="Paro de emergencia (tecla Espacio)">PARO</button>
+</header>
+<div id="motivo" class="motivo"></div>
+
+<main class="rejilla">
+
+  <!-- ============ Gráficas ============ -->
+  <section class="tarjeta ancha">
+    <div class="cabecera">
+      <h2>Gráficas en vivo</h2>
+      <div class="controles">
+        <label>Articulación <select id="sel-graf"></select></label>
+        <label>Ventana <select id="sel-ventana">
+          <option value="5">5 s</option><option value="10" selected>10 s</option>
+          <option value="30">30 s</option></select></label>
+        <button id="btn-pausa" class="btn chico">Pausar</button>
+      </div>
+    </div>
+    <div class="graficas">
+      <div class="graf"><div class="leyenda"><i class="c1"></i>posición real <i class="c2"></i>trayectoria deseada <span class="unidad">[°]</span></div><canvas id="g-pos"></canvas></div>
+      <div class="graf"><div class="leyenda"><i class="c3"></i>error <span class="unidad">[°]</span></div><canvas id="g-err"></canvas></div>
+      <div class="graf"><div class="leyenda"><i class="c4"></i>mando <i class="c5"></i>límite <span class="unidad" id="u-mando">[A]</span></div><canvas id="g-cmd"></canvas></div>
+    </div>
+  </section>
+
+  <!-- ============ Mover ============ -->
+  <section class="tarjeta">
+    <div class="cabecera"><h2>Mover</h2></div>
+    <div class="pestanas" role="tablist" id="pest-mover">
+      <button class="pestana" role="tab" data-modo="velocidad">Por velocidad</button>
+      <button class="pestana" role="tab" data-modo="tiempo">Por tiempo</button>
+    </div>
+    <div class="fila">
+      <label class="pct m-velocidad">Velocidad <input id="in-pct" type="number" min="1" max="200" step="1" value="50"> %</label>
+      <label class="pct m-tiempo">Duración <input id="in-dur" type="number" min="0.5" max="60" step="0.1" value="2"> s</label>
+      <span class="nota m-velocidad sin-margen">La duración sale de la distancia: 100 % = mitad de la velocidad máxima física.</span>
+      <span class="nota m-tiempo sin-margen">Todas las articulaciones tardan eso (si es muy poco para sus límites, se alarga y avisa).</span>
+    </div>
+    <table class="tabla" id="tabla-mover">
+      <thead><tr><th>Articulación</th><th>Actual</th><th>Objetivo [°]</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="fila-botones">
+      <button id="btn-mover" class="btn primario">Mover todas</button>
+      <button id="btn-cero" class="btn">Ir a cero</button>
+      <button id="btn-copiar" class="btn">Copiar actual</button>
+      <button id="btn-cancelar-mov" class="btn">Detener</button>
+    </div>
+    <div class="nota" id="nota-mov"></div>
+    <details class="sub">
+      <summary>Predeterminado (al arrancar y para los tópicos)</summary>
+      <div class="fila">
+        <label>Modo <select id="def-modo"><option value="velocidad">velocidad (%)</option><option value="tiempo">tiempo (s)</option></select></label>
+        <label>Velocidad <input id="in-pct-def" type="number" min="1" max="200" step="1"> %</label>
+        <label>Duración <input id="in-dur-def" type="number" min="0.5" max="60" step="0.1"> s</label>
+        <button id="btn-tray-def" class="btn chico">Aplicar</button>
+      </div>
+      <div class="nota">En los tópicos (<code>/brazo/objetivo_deg</code>, por nombres) el valor extra es % en modo velocidad y segundos en modo tiempo. Se guarda con "Guardar ajustes".</div>
+    </details>
+  </section>
+
+  <!-- ============ Perfil y articulaciones ============ -->
+  <section class="tarjeta">
+    <div class="cabecera"><h2>Perfil y articulaciones</h2></div>
+    <div class="fila">
+      <label>Brazo <select id="sel-brazo"></select></label>
+    </div>
+    <table class="tabla" id="tabla-perfil">
+      <thead><tr><th>Articulación</th><th>Estado</th><th>Mando</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="fila-botones">
+      <button id="btn-perfil" class="btn primario">Aplicar perfil</button>
+    </div>
+    <div class="nota">Aplicar reinicia el control (deactivate → configure → activate) y fija el cero en la postura actual. Ausente = no montada (su masa no cuenta); bloqueada = fija, su masa sí cuenta.</div>
+  </section>
+
+  <!-- ============ Ganancias ============ -->
+  <section class="tarjeta ancha">
+    <div class="cabecera"><h2>Ganancias, calibración y límites</h2>
+      <div class="controles">
+        <label class="chk"><input type="checkbox" id="chk-supervisor"> Supervisor</label>
+      </div>
+    </div>
+    <div class="pestanas" role="tablist" id="pest-ganancias">
+      <button class="pestana" role="tab" data-vista="polos">Por polos λ</button>
+      <button class="pestana" role="tab" data-vista="zeta">Por ζ, ω<sub>n</sub>, ε</button>
+      <button class="pestana" role="tab" data-vista="cal">Calibración y límites</button>
+    </div>
+    <div class="desliza">
+    <table class="tabla vista-polos" id="tabla-ganancias">
+      <thead><tr><th>Art.</th><th title="Modo con el que se controla ahora">en uso</th>
+        <th class="c-polos">λ1</th><th class="c-polos">λ2</th><th class="c-polos">λ3</th><th class="c-polos">λ4</th>
+        <th class="c-zeta" title="Ancho de banda del lazo [rad/s]">ω<sub>n</sub></th><th class="c-zeta" title="Amortiguamiento del par lento">ζ</th><th class="c-zeta" title="ω_n / ω_observador (0 &lt; ε ≤ 1)">ε</th><th class="c-zeta" title="Amortiguamiento del observador (0 = igual a ζ)">ζ<sub>obs</sub></th>
+        <th class="c-cal">β</th><th class="c-cal">α</th><th class="c-cal">armadura</th><th class="c-cal">α_g</th><th class="c-cal">fricción</th><th class="c-cal">límite</th>
+        <th>κ est.</th><th>sobreimp.</th><th>sat.</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    </div>
+    <div class="nota c-polos">Los 4 polos reales del GPI: p(s) = Π(s+λᵢ) [rad/s]. "Aplicar" pone esa articulación en modo polos. Si está en modo ζ, aquí ves los polos equivalentes (con ζ &lt; 1 son complejos: se muestra −Re y la parte imaginaria al pasar el ratón).</div>
+    <div class="nota c-zeta">p(s) = (s²+2ζω<sub>n</sub>s+ω<sub>n</sub>²)(s²+2ζ<sub>obs</sub>ω<sub>p</sub>s+ω<sub>p</sub>²), ω<sub>p</sub> = ω<sub>n</sub>/ε. "Aplicar" pone esa articulación en modo ζ. ζ = 1, ε = 0.25 equivale a [ω<sub>n</sub>, ω<sub>n</sub>, 4ω<sub>n</sub>, 4ω<sub>n</sub>]. Recomendado: ζ entre 1 y 1.3, ε = 0.25; ζ &lt; 1 da polos complejos (sobreimpulso).</div>
+    <div class="nota c-cal">β: margen de inercia (control con β·M). α, armadura, α_g, fricción: calibración del modelo (las llena el autotuning). Límite: corriente máxima [A], no puede pasar la continua del motor ni el par del reductor.</div>
+    <div class="nota">Sin sobreimpulso con κ = M<sub>ctrl</sub>/M<sub>real</sub> entre ~0.6 y ~1.4. Cada cambio se valida en el control antes de aplicarse.</div>
+    <div class="fila-botones">
+      <button id="btn-guardar" class="btn primario" title="Escribe ganancias, calibración, límites y el modo de trayectoria predeterminado en el archivo de ajustes de esta plataforma; el control arrancará con ellos">Guardar ajustes</button>
+      <button id="btn-restaurar" class="btn" title="Descarta los cambios sin guardar y vuelve a lo último que guardaste">Volver a las guardadas</button>
+      <button id="btn-fabrica" class="btn advertencia" title="Valores del perfil del brazo y de la plataforma, sin el archivo de ajustes (no lo borra)">Valores de fábrica</button>
+      <label class="chk"><input type="checkbox" id="chk-estados"> Guardar también activa/bloqueada/ausente</label>
+    </div>
+    <div class="nota" id="nota-ajustes"></div>
+  </section>
+
+  <!-- ============ Plataforma ============ -->
+  <section class="tarjeta ancha">
+    <div class="cabecera"><h2>Configuración de la plataforma <span class="insignia" id="b-plat-conf">—</span></h2>
+      <div class="controles">
+        <button id="btn-plat-recargar" class="btn chico">Descartar cambios</button>
+        <button id="btn-plat-guardar" class="btn chico">Guardar (al próximo arranque)</button>
+        <button id="btn-plat-reiniciar" class="btn chico primario">Guardar y reiniciar el control</button>
+      </div>
+    </div>
+    <details id="plat-detalles">
+      <summary>Tópicos, signos, encoders y nombres (lo del archivo <code>config/plataformas/…</code>)</summary>
+      <div class="fila" id="plat-interfaz"></div>
+      <div class="desliza">
+      <table class="tabla" id="tabla-plataforma">
+        <thead><tr><th>Art.</th><th>estado</th><th>mando</th><th title="-1 si gira al revés">signo</th><th>encoder</th><th title="Cero del encoder absoluto respecto al URDF [rad]">offset abs. [rad]</th><th title="Postura física al encender (encoder incremental) [rad, URDF]">postura encendido [rad]</th><th>nombre en estado</th><th>nombre en mando</th><th>unidad</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      </div>
+      <div class="nota">Los cambios se guardan en el archivo de ajustes de esta plataforma (encima de <code>config/plataformas/…</code>, que no se toca). Signos, encoders, tópicos y nombres se aplican al reiniciar el control: deshabilítalo y deja el brazo apoyado antes de "Guardar y reiniciar". Prueba un cambio de signo con 10 % de velocidad y 5°.</div>
+      <pre class="salida" id="plat-archivos"></pre>
+    </details>
+  </section>
+
+  <!-- ============ Conformador ============ -->
+  <section class="tarjeta">
+    <div class="cabecera"><h2>Conformador (base elástica)</h2></div>
+    <div class="fila">
+      <label>Tipo <select id="sh-tipo"><option>ninguno</option><option>zv</option><option>zvd</option><option>ei</option></select></label>
+      <label>f [Hz] <input id="sh-f" type="number" step="0.01" min="0.05"></label>
+      <label>ζ <input id="sh-z" type="number" step="0.005" min="0" max="0.9"></label>
+    </div>
+    <div class="fila-botones">
+      <button id="btn-shaper" class="btn primario">Aplicar</button>
+      <button id="btn-modo" class="btn">Estimar modo (último movimiento)</button>
+    </div>
+    <pre class="salida" id="salida-modo"></pre>
+  </section>
+
+  <!-- ============ Autotuning ============ -->
+  <section class="tarjeta">
+    <div class="cabecera"><h2>Autotuning</h2></div>
+    <div class="fila" id="at-arts"></div>
+    <div class="fila">
+      <label class="chk"><input type="checkbox" id="at-aplicar" checked> Aplicar resultados</label>
+      <label class="chk"><input type="checkbox" id="at-guardar"> Guardar al YAML</label>
+    </div>
+    <div class="fila-botones">
+      <button id="btn-autotune" class="btn primario">Iniciar autotuning</button>
+      <button id="btn-cancelar-at" class="btn">Cancelar</button>
+    </div>
+    <div class="progreso"><div id="at-barra"></div></div>
+    <div class="nota" id="at-etapa"></div>
+    <pre class="salida" id="at-resultado"></pre>
+    <div class="nota">Mueve el brazo en 3 posturas con corriente reducida. Verifica antes que las posturas del perfil no choquen. Se recomienda activar el modo calibración.</div>
+  </section>
+
+  <!-- ============ Guardar y eventos ============ -->
+  <section class="tarjeta">
+    <div class="cabecera"><h2>Calibración y eventos</h2></div>
+    <div class="fila">
+      <label class="chk"><input type="checkbox" id="chk-calibracion"> Modo calibración (exige esta página abierta)</label>
+    </div>
+    <ul class="eventos" id="eventos"></ul>
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+<script src="/web/app.js"></script>
+</body>
+</html>

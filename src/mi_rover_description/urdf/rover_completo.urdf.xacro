@@ -1,6 +1,15 @@
 <?xml version="1.0"?>
 <robot name="mi_rover_tesis" xmlns:xacro="http://ros.org/wiki/xacro">
 
+  <!-- ARGUMENTOS DEL BRAZO (ver launch/gazebo.launch.py)
+       montadas:    número de articulaciones montadas (1..5); las demás y
+                    sus eslabones no existen en la simulación.
+       escala_masa: factor de masa e inercia de los eslabones del brazo
+                    (pruebas de robustez del control). -->
+  <xacro:arg name="montadas" default="5"/>
+  <xacro:arg name="escala_masa" default="1.0"/>
+  <xacro:property name="montadas" value="$(arg montadas)"/>
+
   <!-- INCLUDES PRINCIPALES -->
   <xacro:include filename="$(find mi_rover_description)/urdf/chasis.urdf" />
   <xacro:include filename="$(find mi_rover_description)/urdf/wheel.xacro" />
@@ -12,7 +21,8 @@
   <xacro:llanta prefijo="trasera_der" x="-0.3437" y="-0.315" z="0.15" roll="0" pitch="0" yaw="0" />
 
   <!-- INCLUIR EL BRAZO -->
-  <xacro:include filename="$(find mi_rover_description)/urdf/brazo.urdf" />
+  <!-- brazo_gz.urdf.xacro se genera de brazo.urdf con scripts/generar_brazo_gz.py -->
+  <xacro:include filename="$(find mi_rover_description)/urdf/brazo_gz.urdf.xacro" />
 
   <!-- UNION FIJA CHASIS-BRAZO -->
   <joint name="chasis_a_brazo_joint" type="fixed">
@@ -55,10 +65,10 @@
     <plugin filename="gz-sim-joint-state-publisher-system" name="gz::sim::systems::JointStatePublisher">
       <update_rate>200</update_rate>
       <joint_name>Joint_1</joint_name>
-      <joint_name>Joint_2</joint_name>
-      <joint_name>Joint_3</joint_name>
-      <joint_name>Joint_4</joint_name>
-      <joint_name>Joint_5</joint_name>
+      <xacro:if value="${montadas >= 2}"><joint_name>Joint_2</joint_name></xacro:if>
+      <xacro:if value="${montadas >= 3}"><joint_name>Joint_3</joint_name></xacro:if>
+      <xacro:if value="${montadas >= 4}"><joint_name>Joint_4</joint_name></xacro:if>
+      <xacro:if value="${montadas >= 5}"><joint_name>Joint_5</joint_name></xacro:if>
     </plugin>
   </gazebo>
 
@@ -66,29 +76,37 @@
   <gazebo>
     <plugin filename="mi_rover_initial_pose" name="mi_rover::InitialJointPositions">
       <joint name="Joint_1">3.1415</joint>
-      <joint name="Joint_2">-1.5707</joint>
-      <joint name="Joint_3">0.0</joint>
-      <joint name="Joint_4">0.0</joint>
+      <xacro:if value="${montadas >= 2}"><joint name="Joint_2">-1.5707</joint></xacro:if>
+      <xacro:if value="${montadas >= 3}"><joint name="Joint_3">0.0</joint></xacro:if>
+      <xacro:if value="${montadas >= 4}"><joint name="Joint_4">0.0</joint></xacro:if>
     </plugin>
   </gazebo>
 
-<!-- CONTROL DE TORQUE PURO PARA J1, J2, J3 -->
+<!-- CONTROL DE TORQUE PURO (una por articulación montada) -->
   <gazebo>
     <plugin filename="gz-sim-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
       <joint_name>Joint_1</joint_name>
     </plugin>
+    <xacro:if value="${montadas >= 2}">
     <plugin filename="gz-sim-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
       <joint_name>Joint_2</joint_name>
     </plugin>
+    </xacro:if>
+    <xacro:if value="${montadas >= 3}">
     <plugin filename="gz-sim-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
       <joint_name>Joint_3</joint_name>
     </plugin>
+    </xacro:if>
+    <xacro:if value="${montadas >= 4}">
     <plugin filename="gz-sim-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
       <joint_name>Joint_4</joint_name>
     </plugin>
+    </xacro:if>
+    <xacro:if value="${montadas >= 5}">
     <plugin filename="gz-sim-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
       <joint_name>Joint_5</joint_name>
     </plugin>
+    </xacro:if>
   </gazebo>
 
   <!-- FRICCIÓN DE LAS LLANTAS (Para que el rover se ancle al piso) -->

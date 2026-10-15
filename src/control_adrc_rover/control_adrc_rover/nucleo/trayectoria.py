@@ -29,8 +29,11 @@ nueva curva no tiene saltos hasta la 4.ª derivada.
 Duración automática y sincronizada: para un movimiento reposo-reposo,
     |q*'|_max  = 2.4609 |dq| / T        (315/128)
     |q*''|_max = 9.3720 |dq| / T^2,
-de modo que la duración mínima que respeta V_MAX y A_MAX en la articulación
-j es  T_j = max(2.4609 |dq_j| / V_MAX_j, sqrt(9.3720 |dq_j| / A_MAX_j)).
+    |q*'''|_max = 78.75 |dq| / T^3,
+de modo que la duración mínima que respeta V_MAX, A_MAX y (opcional)
+J_MAX en la articulación j es
+    T_j = max(2.4609 |dq_j| / V_MAX_j, sqrt(9.3720 |dq_j| / A_MAX_j),
+              cbrt(78.75 |dq_j| / J_MAX_j)).
 Todas las articulaciones usan T = max(T_min, max_j T_j / p), donde p es la
 escala de velocidad (1.0 = 100 %). A igual desplazamiento y límites, el
 movimiento dura ~31 % más que con la quíntica (cota de velocidad) o ~27 %
@@ -40,6 +43,9 @@ Los coeficientes se calculan en tiempo normalizado tau in [0, 1] para
 evitar el mal condicionamiento de las potencias altas de T.
 
 El módulo es independiente de ROS: se puede probar y graficar por separado.
+
+Nota: versiones anteriores de la guía la llamaban "quíntica"; es de 9.º
+grado (mínimo snap-dot).
 
 Autor: Adán Medina Covarrubias
 """
@@ -54,6 +60,7 @@ N_COEF: int = ORDEN + 1
 
 PEAK_VEL_FACTOR: float = 315.0 / 128.0          # 2.4609375
 PEAK_ACC_FACTOR: float = 9.371973879            # max |s''(tau)|, tau ~ 0.3110
+PEAK_JERK_FACTOR: float = 78.75                 # max |s'''(tau)| (tau = 0.5)
 
 
 def _matriz_final() -> np.ndarray:
@@ -72,15 +79,18 @@ class TrayectoriaNonica:
     """Trayectoria de 9.º grado sincronizada para N articulaciones."""
 
     def __init__(self, v_max: np.ndarray, a_max: np.ndarray,
-                 t_min: float) -> None:
+                 t_min: float, j_max: Optional[np.ndarray] = None) -> None:
         """Guarda los límites y deja la trayectoria inactiva.
 
         Args:
             v_max: velocidad máxima por articulación [rad/s].
             a_max: aceleración máxima por articulación [rad/s^2].
             t_min: duración mínima de cualquier movimiento [s].
+            j_max: jerk máximo al 100 % [rad/s^3]; 0 o None = sin límite.
         """
         self.v_max = np.asarray(v_max, dtype=float)
+        self.j_max = (np.zeros_like(self.v_max) if j_max is None
+                      else np.asarray(j_max, dtype=float))
         self.a_max = np.asarray(a_max, dtype=float)
         self.t_min = float(t_min)
         n = self.v_max.size
@@ -96,14 +106,20 @@ class TrayectoriaNonica:
         dq = np.abs(delta_q)
         t_vel = PEAK_VEL_FACTOR * dq / self.v_max
         t_acc = np.sqrt(PEAK_ACC_FACTOR * dq / self.a_max)
-        t_req = max(float(np.max(t_vel)), float(np.max(t_acc))) / escala
-        return max(self.t_min, t_req)
+        t_req = max(float(np.max(t_vel, initial=0.0)),
+                    float(np.max(t_acc, initial=0.0)))
+        con_j = self.j_max > 0.0
+        if np.any(con_j):
+            t_jerk = np.cbrt(PEAK_JERK_FACTOR * dq[con_j] / self.j_max[con_j])
+            t_req = max(t_req, float(np.max(t_jerk)))
+        return max(self.t_min, t_req / escala)
 
     def planear(self, t_now: float, q0: np.ndarray, v0: np.ndarray,
                 acc0: np.ndarray, q_final: np.ndarray,
                 escala: float = 1.0,
                 jerk0: Optional[np.ndarray] = None,
-                snap0: Optional[np.ndarray] = None) -> float:
+                snap0: Optional[np.ndarray] = None,
+                duracion_min: float = 0.0) -> float:
         """Calcula los coeficientes de un nuevo movimiento.
 
         Args:
@@ -111,6 +127,8 @@ class TrayectoriaNonica:
             jerk0, snap0: 3.ª y 4.ª derivadas iniciales. Si son None y hay
                 una trayectoria activa, se toman de ella en t_now; si no,
                 se suponen cero.
+            duracion_min: duración mínima adicional [s] (p. ej. la que
+                exige la corriente o el periodo del modo de la base).
 
         Returns:
             Duración T del movimiento [s].
@@ -130,7 +148,7 @@ class TrayectoriaNonica:
             snap0 = s_act if snap0 is None else np.asarray(snap0, float)
 
         h = q_final - q0
-        T = self.duracion(h, escala)
+        T = max(self.duracion(h, escala), float(duracion_min))
 
         # Condiciones iniciales en tau: b_k = q^(k)(0) T^k / k!
         b = self.coef
@@ -203,6 +221,15 @@ class TrayectoriaNonica:
         self.q_final = np.asarray(q, dtype=float).copy()
         self.active = False
 
+    def estado_en(self, t_now: float) -> list:
+        """[q, q', q'', q''', q''''] en el tiempo absoluto t_now."""
+        t = t_now - self.t0
+        if not self.active or t >= self.duration:
+            self.active = False
+            z = np.zeros_like(self.q_final)
+            return [self.q_final.copy(), z, z, z, z]
+        return self.derivadas(t, 4)
 
-# Alias para no tocar adrc_simple_node.py (importa TrayectoriaQuintica).
+
+# Alias heredado (versiones previas importaban TrayectoriaQuintica).
 TrayectoriaQuintica = TrayectoriaNonica

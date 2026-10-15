@@ -2,21 +2,23 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>control_adrc_rover</name>
-  <version>0.0.0</version>
-  <description>Control ADRC del brazo del rover (tesis de maestría)</description>
-  <maintainer email="medina@todo.todo">medina</maintainer>
-  <license>TODO: License declaration</license>
+  <version>0.2.0</version>
+  <description>Control ADRC/GPI del brazo del rover (tesis de maestría)</description>
+  <maintainer email="adan.medina.c.13@gmail.com">Adán Medina Covarrubias</maintainer>
+  <license>Apache-2.0</license>
 
   <depend>rclpy</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
-  <depend>geometry_msgs</depend>
+  <depend>std_srvs</depend>
   <depend>rcl_interfaces</depend>
+  <depend>control_adrc_interfaces</depend>
 
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
   <exec_depend>pinocchio</exec_depend>
   <exec_depend>mi_rover_description</exec_depend>
 
