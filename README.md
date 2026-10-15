@@ -36,11 +36,8 @@ Workspace de ROS 2 de la tesis de maestría en Mecatrónica sobre el control de 
 | [`control_adrc_rover`](src/control_adrc_rover) | `ament_python` | **Principal** | Control GPI/ADRC para brazos seriales de hasta 5 articulaciones (activas, bloqueadas o ausentes), modelo dinámico reducido (Pinocchio), mando en corriente, protecciones, supervisor, autotuning y conformador. Lifecycle node configurable por perfil + plataforma. |
 | [`control_adrc_interfaces`](src/control_adrc_interfaces) | `ament_cmake` | Nuevo | Mensaje de estado, servicios y acciones (MoverA, Autotune) del control. |
 | [`control_adrc_gui`](src/control_adrc_gui) | `ament_python` | Nuevo | Interfaz web (sin dependencias nuevas) que usa sólo las interfaces públicas del control. |
-| [`control_adrc_rover_cpp`](src/control_adrc_rover_cpp) | `ament_cmake` | Anterior | Primera implementación en C++ del ADRC, se conserva como referencia. |
 
-Además, [`test/rover_commander.py`](test/rover_commander.py) es un panel de terminal que envía posturas predefinidas al brazo.
-
-> **Importante:** `control_adrc_rover` y `control_adrc_rover_cpp` controlan las mismas articulaciones. Nunca deben ejecutarse al mismo tiempo.
+La implementación anterior en C++ (`control_adrc_rover_cpp`) y el panel `test/rover_commander.py` se retiraron; siguen en el historial de git si se necesitan como referencia.
 
 ---
 
@@ -88,7 +85,7 @@ flowchart LR
     BR --> GZ
 ```
 
-En el robot real, la posición la publican los encoders o los drivers, `actuador_sim` no se ejecuta y la corriente se envía directamente a los drivers. El nodo de control es el mismo; sólo cambia la plataforma (`sim:=false`).
+En el robot real, la posición la publican los encoders o los drivers, `actuador_sim` no se ejecuta y la corriente se envía directamente a los drivers (`/arm_teleop/jointN/current`). El nodo de control es el mismo; sólo cambia la plataforma (`real.launch.py`, o `brazo.launch.py`, que detecta la Jetson).
 
 ---
 
@@ -107,14 +104,15 @@ ros2_ws_tesis/
 │   ├── control_adrc_rover/
 │   │   ├── config/brazos/principal.yaml    Perfil del brazo
 │   │   ├── config/plataformas/{sim,real}.yaml
-│   │   ├── launch/brazo.launch.py          Control + actuador_sim + interfaz
+│   │   ├── config/ajustes/                 Lo guardado desde la interfaz, por plataforma
+│   │   ├── launch/brazo.launch.py          Control + actuador_sim + interfaz (detecta sim/real)
+│   │   ├── launch/{sim,real}.launch.py     Plataforma fija
 │   │   ├── launch/brazo_sim.launch.py      Compatibilidad
 │   │   ├── control_adrc_rover/             Nodos y núcleo sin ROS (nucleo/)
 │   │   ├── test/                           pytest + Monte Carlo
 │   │   └── README.md                       Guía completa del control
-│   ├── control_adrc_gui/                   Interfaz web
-│   └── control_adrc_rover_cpp/             Implementación anterior en C++
-└── test/rover_commander.py
+│   └── control_adrc_gui/                   Interfaz web
+└── README.md
 ```
 
 ---
@@ -152,7 +150,7 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
-Con `--symlink-install`, los cambios en archivos YAML y Python surten efecto con solo relanzar. Solo es necesario recompilar al agregar archivos, modificar `setup.py`, `package.xml` o `CMakeLists.txt`, o editar código C++.
+Con `--symlink-install`, los cambios en archivos YAML y Python surten efecto con solo relanzar, y lo que se guarda desde la interfaz queda en `src/` (visible para git). Solo es necesario recompilar al agregar archivos, modificar `setup.py`, `package.xml`, `CMakeLists.txt` o los `.msg/.srv/.action`.
 
 Para no repetir los `source` en cada terminal, pueden agregarse al final de `~/.bashrc`.
 
@@ -169,7 +167,7 @@ ros2 launch mi_rover_description gazebo.launch.py
 **Terminal 2 — Control, motores simulados e interfaz web**
 
 ```bash
-ros2 launch control_adrc_rover brazo.launch.py
+ros2 launch control_adrc_rover sim.launch.py
 ```
 
 Se abre el navegador en `http://localhost:8080`. El control está listo cuando aparece `Cero fijado en la postura actual: [...]` y `Control habilitado`.
@@ -181,7 +179,7 @@ ros2 topic pub --once /brazo/objetivo_deg std_msgs/msg/Float64MultiArray \
   "{data: [90.0, 30.0, -45.0, 0.0, 0.0]}"
 ```
 
-Los ángulos son relativos a la postura de arranque; un valor extra fija el % de velocidad. Con sólo J1 montada: `montadas:=1` en ambos launch. Detalles en la [guía del control](src/control_adrc_rover/README.md).
+Los ángulos son relativos a la postura de arranque; un valor extra fija el % de velocidad (o los segundos, si el modo de trayectoria es "tiempo"). Con sólo J1 montada: `montadas:=1` en ambos launch. Detalles en la [guía del control](src/control_adrc_rover/README.md).
 
 ---
 
@@ -204,39 +202,18 @@ ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist \
   "{linear: {x: 0.3}, angular: {z: 0.0}}"
 ```
 
-### Panel de posturas predefinidas
-
-```bash
-python3 test/rover_commander.py
-```
-
-Publica en `/target_joint_states` (radianes) las posturas `h`, `00`, `0`, `1`, `2` y `3`, seleccionadas desde el teclado. Es compatible con ambos controladores. Con `control_adrc_rover` las posturas se interpretan relativas a la postura de arranque y se ejecutan con la velocidad por defecto.
-
-### Controlador anterior en C++
-
-```bash
-ros2 run control_adrc_rover_cpp rover_arm_full_adrc
-```
-
-Se suscribe a `/target_joint_states` y publica torque directamente en `/model/mi_rover/joint/Joint_i/cmd_force`, por lo que no requiere `actuador_sim`. A diferencia del controlador principal:
-
-- emplea una matriz de masas analítica con parámetros fijos en el código,
-- usa trayectorias de 9.º grado de duración fija (3 s),
-- satura en torque y no en corriente,
-- publica continuamente velocidad cero en `/cmd_vel`, lo que impide mover el rover mientras está en ejecución.
-
 ---
 
 ## 8. Robot real
 
-Editar `src/control_adrc_rover/config/plataformas/real.yaml` en las líneas `# <-- AJUSTAR` (tópicos, nombres, QoS, signos y tipo de encoder; por defecto incremental) y lanzar en la Jetson:
+La configuración del brazo real (tópicos `/arm_teleop/jointN/current`, signo de J1, encoders absolutos, ganancias, límites) está en `src/control_adrc_rover/config/plataformas/real.yaml`. En la Jetson:
 
 ```bash
-ros2 launch control_adrc_rover brazo.launch.py sim:=false            # brazo completo
-ros2 launch control_adrc_rover brazo.launch.py sim:=false montadas:=1 # sólo J1
+ros2 launch control_adrc_rover real.launch.py              # brazo completo
+ros2 launch control_adrc_rover real.launch.py montadas:=1  # sólo J1
 ```
 
-La interfaz se abre desde la PC del rover en la dirección que imprime la terminal. El procedimiento y las reglas de seguridad están en las secciones 14 y 19 de la [guía](src/control_adrc_rover/README.md). **Ninguna configuración debe probarse en el robot sin haberse validado antes en simulación.**
+La interfaz se abre desde la PC del rover en la dirección que imprime la terminal; ahí mismo se ajustan y guardan ganancias y plataforma (en `config/ajustes/principal_real.yaml`). El procedimiento y las reglas de seguridad están en las secciones 14 y 19 de la [guía](src/control_adrc_rover/README.md). **Ninguna configuración debe probarse en el robot sin haberse validado antes en simulación.**
 
 ---
 
@@ -248,6 +225,6 @@ La interfaz se abre desde la PC del rover en la dirección que imprime la termin
 
 ## 10. Pendientes conocidos
 
-- Los `package.xml` de `mi_rover_description` y `control_adrc_rover_cpp` mantienen la licencia y la descripción como `TODO`.
+- El `package.xml` de `mi_rover_description` mantiene la licencia y la descripción como `TODO`.
 - Algunos parámetros de los actuadores son supuestos y deben verificarse con datos medidos (relación del tornillo sin fin, inercia del rotor Yellow Jacket, corriente segura, posturas del autotuning). Ver la sección 20 de la guía.
 - Las pruebas de estilo de ament (`test_flake8`, `test_pep257`) pueden reportar avisos de formato de docstrings; las pruebas funcionales están en `src/control_adrc_rover/test`.
