@@ -25,6 +25,7 @@ Autor: Adán Medina Covarrubias
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import subprocess
@@ -48,7 +49,8 @@ from std_srvs.srv import SetBool, Trigger
 from control_adrc_gui.servidor import ServidorWeb
 from control_adrc_interfaces.action import Autotune, MoverA
 from control_adrc_interfaces.msg import EstadoControl
-from control_adrc_interfaces.srv import CargarPerfil, GuardarConfiguracion
+from control_adrc_interfaces.srv import (CargarPerfil, Configuracion,
+                                         GuardarConfiguracion)
 
 
 def _es_wsl() -> bool:
@@ -129,6 +131,8 @@ class NodoGui(Node):
                                           callback_group=cb),
             'modo': self.create_client(Trigger, f'{ctrl}/estimar_modo',
                                        callback_group=cb),
+            'configuracion': self.create_client(
+                Configuracion, f'{ctrl}/configuracion', callback_group=cb),
             # Atómico: los campos de la sintonía (wn, ζ, ε o los polos)
             # llegan juntos y se validan como un conjunto.
             'parametros': self.create_client(
@@ -307,6 +311,17 @@ class NodoGui(Node):
                 archivo='', incluir_estados=bool(d.get('incluir_estados')))
             r = self._llamar('guardar', req)
             return r.exito, r.mensaje, {'archivo': r.archivo}
+        if accion in ('config_leer', 'restaurar_guardadas',
+                      'restaurar_fabrica', 'guardar_plataforma'):
+            req = Configuracion.Request(
+                accion='leer' if accion == 'config_leer' else accion,
+                datos=json.dumps(d.get('datos') or {}),
+                reiniciar=bool(d.get('reiniciar')))
+            r = self._llamar('configuracion', req, 20.0)
+            extra = {'archivo': r.archivo}
+            if r.datos:
+                extra['config'] = json.loads(r.datos)
+            return r.exito, r.mensaje, extra
         if accion == 'estimar_modo':
             r = self._llamar('modo', Trigger.Request())
             return r.success, r.message, {}

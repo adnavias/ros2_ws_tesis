@@ -32,6 +32,14 @@ def ruta_capa(valor: str, sub: str) -> str:
     return os.path.join(dir_config(), sub, f'{valor}.yaml')
 
 
-def ruta_ajustes(nombre_brazo: str) -> str:
-    """config/autotune_<brazo>.yaml."""
-    return os.path.join(dir_config(), f'autotune_{nombre_brazo}.yaml')
+def ruta_ajustes(nombre_brazo: str, plataforma: str = '') -> str:
+    """config/ajustes/<brazo>_<plataforma>.yaml.
+
+    Cada plataforma (sim, real, ...) guarda sus propias ganancias: lo que
+    se afina en Gazebo no se aplica al robot real y viceversa. Sin
+    plataforma devuelve el archivo viejo, config/autotune_<brazo>.yaml.
+    """
+    if not plataforma:
+        return os.path.join(dir_config(), f'autotune_{nombre_brazo}.yaml')
+    return os.path.join(dir_config(), 'ajustes',
+                        f'{nombre_brazo}_{plataforma}.yaml')

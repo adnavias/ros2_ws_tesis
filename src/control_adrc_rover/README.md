@@ -140,8 +140,9 @@ El nodo de control es el mismo en ambos casos; sólo cambia la plataforma (`sim:
 │   ├── config/brazos/principal.yaml    PERFIL del brazo (física, motores, ganancias)
 │   ├── config/plataformas/sim.yaml     Lo que cambia en simulación
 │   ├── config/plataformas/real.yaml    Lo que cambia en la Jetson (# <-- AJUSTAR)
-│   ├── config/autotune_principal.yaml  Se crea al guardar/autotunear (opcional)
-│   ├── launch/brazo.launch.py          NUEVO: un comando para todo
+│   ├── config/ajustes/                 <brazo>_<plataforma>.yaml: ganancias y cambios guardados
+│   ├── launch/brazo.launch.py          un comando para todo (detecta sim/real)
+│   ├── launch/sim.launch.py, real.launch.py  explícitos
 │   ├── launch/brazo_sim.launch.py      Compatibilidad (mismo comando de antes)
 │   ├── control_adrc_rover/
 │   │   ├── control_node.py             Nodo de control (lifecycle "adrc_simple")
@@ -220,6 +221,7 @@ Interfaz web lista: http://localhost:8080 ...
 Variantes:
 
 ```bash
+ros2 launch control_adrc_rover sim.launch.py                     # igual, forzando simulación
 ros2 launch control_adrc_rover brazo.launch.py gui:=false          # sólo el control
 ros2 launch control_adrc_rover brazo_sim.launch.py                 # comando de antes (sin interfaz)
 ```
@@ -291,7 +293,7 @@ Los objetivos fuera de los límites del URDF (menos `margen_limite`) se recortan
 ### 9.1 Cómo abrirla
 
 - **Simulación (WSL):** `ros2 launch control_adrc_rover brazo.launch.py` abre sola `http://localhost:8080`.
-- **Robot:** en la Jetson `ros2 launch control_adrc_rover brazo.launch.py sim:=false`. En la terminal aparece la dirección, p. ej. `http://192.168.1.20:8080`; ábrela en la computadora conectada a la red del rover. No hace falta ROS en esa computadora, sólo un navegador.
+- **Robot:** en la Jetson `ros2 launch control_adrc_rover real.launch.py` (o `brazo.launch.py`, que detecta la Jetson sola). En la terminal aparece la dirección, p. ej. `http://192.168.1.20:8080`; ábrela en la computadora conectada a la red del rover. No hace falta ROS en esa computadora, sólo un navegador.
 - Funciona sin internet (no carga nada de fuera). Puerto: `puerto:=8090`.
 
 ### 9.2 Qué tiene
@@ -394,7 +396,9 @@ Un temporizador a 100 Hz vigila la medición (watchdog) y el heartbeat. Los obje
 
 **`estimar_modo`** — Herramienta de línea de comandos (sección 16).
 
-**`brazo.launch.py`** — Argumentos: `brazo`, `sim`, `plataforma`, `montadas`, `estados`, `archivo_ajustes`, `gui`, `abrir_navegador`, `puerto`.
+**`brazo.launch.py`** — Argumentos: `brazo`, `sim`, `plataforma`, `montadas`, `estados`, `archivo_ajustes`, `gui`, `abrir_navegador`, `puerto`. Si no se da `sim` ni `plataforma`, decide así: variable `BRAZO_PLATAFORMA` (sim o real) → si es una Jetson, real → si no, sim. La terminal imprime cuál eligió y por qué.
+
+**`sim.launch.py`, `real.launch.py`** — Lo mismo con la plataforma fija; aceptan los demás argumentos (`montadas`, `estados`, `gui`, ...).
 
 ## 12. Configuración: perfil, plataforma y ajustes
 
@@ -404,12 +408,21 @@ La configuración se arma en capas; cada una sobrescribe a la anterior:
 
 1. `config/brazos/<brazo>.yaml` — el brazo (URDF, motores, articulaciones, ganancias).
 2. `config/plataformas/<sim|real>.yaml` — tópicos, encoders, signos, límites de la plataforma.
-3. `config/autotune_<brazo>.yaml` — lo guardado desde la interfaz o por el autotuning (si existe).
+3. `config/ajustes/<brazo>_<plataforma>.yaml` (p. ej. `principal_sim.yaml`, `principal_real.yaml`) — lo guardado desde la interfaz o por el autotuning (si existe). **Cada plataforma tiene el suyo**: lo afinado en Gazebo no se aplica al robot real. Si sólo existe el archivo viejo `config/autotune_<brazo>.yaml`, la simulación lo carga y al guardar escribe el nuevo; el real nunca lo usa.
 4. Parámetros `montadas` y `estados` del launch.
 
 En cada capa, `por_defecto` aplica a todas las articulaciones y `articulaciones.<nombre>` a una sola. El orden de `articulaciones` es el orden de los objetivos.
 
 Reglas: números con punto decimal; espacios, no tabuladores; tras editar, relanzar.
+
+### 12.1.1 Guardar y restaurar desde la interfaz
+
+- **Guardar ganancias** (tarjeta de ganancias): escribe sintonía, β, calibración, límites, velocidad por defecto, conformador y supervisor en el archivo de ajustes de la plataforma. El control arrancará con esos valores. Se fusiona con lo que ya tenga el archivo (no borra los cambios de plataforma).
+- **Volver a las guardadas**: descarta lo que cambiaste sin guardar y vuelve a lo último guardado, sin reiniciar el control ni mover el cero.
+- **Valores de fábrica**: carga las ganancias del perfil + plataforma (sin el archivo de ajustes). No borra lo guardado; si no te convencen, "Volver a las guardadas".
+- **Configuración de la plataforma** (tarjeta propia, desplegable): tópicos, QoS, tipo de mando, `signo`, encoder, `offset_absoluto`, `postura_encendido_urdf`, nombres y unidad. Se guardan en el mismo archivo de ajustes (no se toca `config/plataformas/*.yaml`) y se aplican al reiniciar el control: "Guardar (al próximo arranque)" o "Guardar y reiniciar el control" (exige el control deshabilitado). Antes de escribir se valida que la configuración resultante cargue.
+
+Para volver por completo a lo de fábrica de una plataforma, borra su archivo en `config/ajustes/`.
 
 ### 12.2 Motores
 
@@ -611,7 +624,7 @@ ros2 topic echo --once <tópico>
 6. Lanzar:
 
 ```bash
-ros2 launch control_adrc_rover brazo.launch.py sim:=false
+ros2 launch control_adrc_rover real.launch.py
 ```
 
 7. Abrir la interfaz en la PC del rover con la dirección que imprime la terminal.
@@ -619,7 +632,7 @@ ros2 launch control_adrc_rover brazo.launch.py sim:=false
 **Prueba con sólo J1** (J2–J5 desmontadas):
 
 ```bash
-ros2 launch control_adrc_rover brazo.launch.py sim:=false montadas:=1
+ros2 launch control_adrc_rover real.launch.py montadas:=1
 ```
 
 Objetivo de prueba: `{data: [10.0, 5.0]}` (un ángulo + 5 %) o desde la interfaz "Mover sólo ésta". Con J1 y J2: `montadas:=2`.
@@ -644,7 +657,7 @@ Etapas:
 
 Se aborta (y restaura todo) si el error supera `error_aborto_deg`, si el control sale de habilitado o si la corriente queda saturada más de 0.5 s.
 
-Los resultados quedan en `config/autotune_<brazo>.yaml` si se guardan (se carga al arrancar y se edita a mano).
+Los resultados quedan en `config/ajustes/<brazo>_<plataforma>.yaml` si se guardan (se carga al arrancar y se edita a mano).
 
 **Antes de correrlo**: verifica que las posturas no choquen con el rover (q2 = 0 es vertical hacia arriba; q2 = −1.5707 horizontal hacia adelante).
 

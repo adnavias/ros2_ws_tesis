@@ -10,6 +10,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/EstadoControl.msg"
   "srv/CargarPerfil.srv"
   "srv/GuardarConfiguracion.srv"
+  "srv/Configuracion.srv"
   "action/MoverA.action"
   "action/Autotune.action"
   DEPENDENCIES std_msgs action_msgs

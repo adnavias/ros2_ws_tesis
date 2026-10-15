@@ -1,0 +1,19 @@
+# Configuración guardada del control (archivo de ajustes de la plataforma).
+#   accion = "leer"                 -> datos: JSON con archivos, interfaz y
+#                                      articulaciones de la plataforma actual
+#   accion = "restaurar_guardadas"  -> vuelve a las ganancias del archivo de
+#                                      ajustes (lo último que se guardó)
+#   accion = "restaurar_fabrica"    -> ganancias del perfil + plataforma, sin
+#                                      el archivo de ajustes (no lo borra)
+#   accion = "guardar_plataforma"   -> datos: JSON {"interfaz": {...},
+#                                      "articulaciones": {J: {...}}} que se
+#                                      fusiona en el archivo de ajustes; con
+#                                      reiniciar = true reinicia el control
+string accion
+string datos
+bool reiniciar
+---
+bool exito
+string mensaje
+string datos
+string archivo

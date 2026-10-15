@@ -47,6 +47,7 @@ Autor: Adán Medina Covarrubias
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import threading
@@ -72,7 +73,8 @@ from std_srvs.srv import SetBool, Trigger
 from control_adrc_interfaces.action import Autotune as AutotuneAccion
 from control_adrc_interfaces.action import MoverA
 from control_adrc_interfaces.msg import EstadoControl
-from control_adrc_interfaces.srv import CargarPerfil, GuardarConfiguracion
+from control_adrc_interfaces.srv import (CargarPerfil, Configuracion,
+                                         GuardarConfiguracion)
 from control_adrc_rover.nucleo import config as cfgmod
 from control_adrc_rover.nucleo.autotune import Autotune
 from control_adrc_rover.nucleo.controlador import Controlador
@@ -104,8 +106,30 @@ CAMPOS_ARTICULACION = tuple(RANGOS)
 # wn/zeta/eps/zeta_observador pasan a modo zeta, y `sintonia` elige el
 # modo explícitamente (los valores que no lleguen se toman de la vista
 # equivalente de la sintonía actual).
+# Lo que se puede editar de la plataforma desde la interfaz (se guarda en
+# el archivo de ajustes de esa plataforma y se aplica al reiniciar).
+EDITABLE_INTERFAZ = {
+    'topico_estado': str, 'qos_estado_best_effort': bool,
+    'tipo_mando': str, 'patron_topico_mando': str,
+    'topico_mando_unico': str, 'topico_imu': str,
+    'usar_stamp_medicion': bool,
+}
+EDITABLE_ARTICULACION = {
+    'signo': float, 'encoder': str, 'offset_absoluto': float,
+    'postura_encendido_urdf': float, 'nombre_en_estado': str,
+    'nombre_en_mando': str, 'unidad_posicion': str,
+}
 CAMPOS_SINTONIA = ('sintonia', 'polos', 'wn', 'zeta', 'eps',
                    'zeta_observador')
+
+
+class _DumperAjustes(yaml.SafeDumper):
+    """Dicts en bloque y listas en una línea ([8.0, 8.0, 32.0, 32.0])."""
+
+
+_DumperAjustes.add_representer(
+    list, lambda d, v: d.represent_sequence('tag:yaml.org,2002:seq', v,
+                                            flow_style=True))
 
 
 class NodoControl(NodoBase):
@@ -129,6 +153,10 @@ class NodoControl(NodoBase):
 
         self.cfg: Optional[cfgmod.ConfigBrazo] = None
         self.ctrl: Optional[Controlador] = None
+        self._rutas: Dict[str, str] = {}
+        self.archivo_ajustes = ''
+        self.nombre_plataforma = ''
+        self.plataforma = ''
         self.activo = False
         self.modo_calibracion = False
         self.t_heartbeat = time.monotonic()
@@ -161,6 +189,7 @@ class NodoControl(NodoBase):
             (GuardarConfiguracion, '~/guardar_configuracion',
              self._srv_guardar),
             (Trigger, '~/estimar_modo', self._srv_estimar_modo),
+            (Configuracion, '~/configuracion', self._srv_configuracion),
         ]
         for tipo, nombre, cb in srv:
             self.create_service(tipo, nombre, cb, callback_group=self.cb_srv)
@@ -190,13 +219,32 @@ class NodoControl(NodoBase):
             brazo = str(gp('brazo'))
             perfil = ruta_capa(brazo, 'brazos')
             plataforma = ruta_capa(str(gp('plataforma')), 'plataformas')
+            nombre_plat = ''
+            if plataforma:
+                nombre_plat = str(cfgmod.leer_yaml(plataforma).get(
+                    'plataforma') or os.path.splitext(
+                        os.path.basename(plataforma))[0])
             ajustes = str(gp('archivo_ajustes')) or ''
             nombre_brazo = cfgmod.leer_yaml(perfil).get('nombre', brazo)
+            lectura = ajustes
             if not ajustes:
-                ajustes = ruta_ajustes(nombre_brazo)
+                # Cada plataforma tiene su archivo: lo afinado en Gazebo
+                # no se aplica al robot real.
+                ajustes = ruta_ajustes(nombre_brazo, nombre_plat or 'sin')
+                lectura = ajustes
+                viejo = ruta_ajustes(nombre_brazo)
+                if (not os.path.isfile(ajustes) and nombre_plat == 'sim'
+                        and os.path.isfile(viejo)):
+                    lectura = viejo
+                    self.get_logger().info(
+                        f'Se cargan los ajustes del formato viejo {viejo}; '
+                        f'al guardar se escribirán en {ajustes}')
             self.archivo_ajustes = ajustes
+            self._rutas = {'perfil': perfil, 'plataforma': plataforma,
+                           'ajustes': lectura}
+            self.nombre_plataforma = nombre_plat or 'sin plataforma'
             estados = cfgmod.parsear_estados(str(gp('estados')))
-            cfg = cfgmod.cargar(perfil, plataforma, ajustes,
+            cfg = cfgmod.cargar(perfil, plataforma, lectura,
                                 int(gp('montadas')), estados)
             modelo = None
             try:
@@ -223,7 +271,7 @@ class NodoControl(NodoBase):
             self.cfg, self.ctrl = cfg, ctrl
             self._idx_estado = None
             self.t_rx = None
-        self.plataforma = str(gp('plataforma'))
+        self.plataforma = self.nombre_plataforma
         self._crear_interfaz(cfg)
         self._declarar_dinamicos(cfg)
         self.get_logger().info(
@@ -1031,32 +1079,214 @@ class NodoControl(NodoBase):
             'supervisor': {'habilitado': bool(c.supervisor.habilitado)},
         }
 
+    def _escribir_ajustes(self, ruta: str, datos: dict) -> None:
+        """Escribe el YAML de ajustes con su encabezado (OSError si falla)."""
+        os.makedirs(os.path.dirname(ruta), exist_ok=True)
+        encabezado = (
+            f'# Ajustes del brazo "{self.cfg.nombre}" en la plataforma '
+            f'"{self.nombre_plataforma}"\n# (ganancias, calibración y cambios '
+            f'de plataforma guardados desde la interfaz o el\n# autotuning). '
+            f'Se aplican ENCIMA del perfil y de la plataforma al arrancar.\n'
+            f'# Editable a mano. Si lo borras, el control arranca con los '
+            f'valores de fábrica.\n'
+            f'# Guardado: {time.strftime("%Y-%m-%d %H:%M:%S")}\n')
+        with open(ruta, 'w', encoding='utf-8') as fh:
+            fh.write(encabezado)
+            yaml.dump(datos, fh, Dumper=_DumperAjustes, allow_unicode=True,
+                      sort_keys=False, default_flow_style=False)
+
+    def _ajustes_actuales(self) -> dict:
+        """Contenido del archivo de ajustes que se cargó (o {} si no hay)."""
+        ruta = self._rutas.get('ajustes', '')
+        if ruta and os.path.isfile(ruta):
+            return cfgmod.leer_yaml(ruta)
+        return {}
+
     def guardar(self, archivo: str = '', incluir_estados: bool = False):
-        """Escribe el YAML de ajustes. Devuelve (ok, mensaje, ruta)."""
+        """Guarda las ganancias actuales. Devuelve (ok, mensaje, ruta).
+
+        Se FUSIONAN con lo que ya tenga el archivo, así no se pierden los
+        cambios de plataforma (signos, encoders, tópicos) guardados ahí.
+        """
         if self.ctrl is None:
             return False, 'Nodo sin configurar', ''
         ruta = archivo or self.archivo_ajustes
         with self.lock:
-            datos = self._yaml_ajustes(incluir_estados)
+            nuevos = self._yaml_ajustes(incluir_estados)
         try:
-            os.makedirs(os.path.dirname(ruta), exist_ok=True)
-            encabezado = (
-                f'# Ajustes del brazo "{self.cfg.nombre}" (autotuning y '
-                f'cambios guardados desde la interfaz).\n# Se aplican ENCIMA '
-                f'del perfil y de la plataforma al arrancar. Editable a '
-                f'mano.\n# Guardado: {time.strftime("%Y-%m-%d %H:%M:%S")}\n')
-            with open(ruta, 'w', encoding='utf-8') as fh:
-                fh.write(encabezado)
-                yaml.safe_dump(datos, fh, allow_unicode=True,
-                               sort_keys=False, default_flow_style=None)
-        except OSError as exc:
+            base = (cfgmod.leer_yaml(ruta) if os.path.isfile(ruta)
+                    else self._ajustes_actuales() if not archivo else {})
+            self._escribir_ajustes(ruta, cfgmod.fusionar(base, nuevos))
+        except (OSError, cfgmod.ErrorConfig) as exc:
             return False, f'No se pudo escribir {ruta}: {exc}', ruta
+        if not archivo:
+            self._rutas['ajustes'] = ruta
         if '/install/' in ruta:
             aviso = (' (ojo: está en install/; compila con --symlink-install '
                      'para que se guarde en src/)')
         else:
             aviso = ''
-        return True, f'Guardado en {ruta}{aviso}', ruta
+        return True, (f'Guardado en {ruta}{aviso}. El control arrancará con '
+                      f'estos valores.'), ruta
+
+    # ------------------------------------------------------------------
+    # Configuración: leer, restaurar y editar la plataforma
+    # ------------------------------------------------------------------
+    def _srv_configuracion(self, req, res):
+        res.archivo = getattr(self, 'archivo_ajustes', '')
+        if self.ctrl is None:
+            res.exito, res.mensaje = False, 'Nodo sin configurar'
+            return res
+        try:
+            if req.accion == 'leer':
+                res.datos = json.dumps(self._info_config(),
+                                       ensure_ascii=False)
+                res.exito, res.mensaje = True, ''
+            elif req.accion in ('restaurar_guardadas', 'restaurar_fabrica'):
+                res.exito, res.mensaje = self._restaurar(
+                    req.accion == 'restaurar_guardadas')
+            elif req.accion == 'guardar_plataforma':
+                res.exito, res.mensaje = self._guardar_plataforma(
+                    req.datos, bool(req.reiniciar))
+            else:
+                res.exito = False
+                res.mensaje = f'Acción desconocida: {req.accion}'
+        except (cfgmod.ErrorConfig, ValueError, TypeError, OSError) as exc:
+            res.exito, res.mensaje = False, str(exc)
+        (self.get_logger().info if res.exito
+         else self.get_logger().warning)(f'configuracion/{req.accion}: '
+                                         f'{res.mensaje}')
+        return res
+
+    def _info_config(self) -> dict:
+        cfg = self.cfg
+        aj = self._rutas.get('ajustes', '')
+        return {
+            'brazo': cfg.nombre, 'plataforma': self.nombre_plataforma,
+            'archivos': {
+                'perfil': self._rutas.get('perfil', ''),
+                'plataforma': self._rutas.get('plataforma', ''),
+                'ajustes': self.archivo_ajustes,
+                'ajustes_cargados': aj if aj and os.path.isfile(aj) else '',
+            },
+            'interfaz': {k: cfg.interfaz.get(k) for k in EDITABLE_INTERFAZ},
+            'articulaciones': [
+                dict({k: getattr(a, k) for k in EDITABLE_ARTICULACION},
+                     nombre=a.nombre, estado=a.estado, mando=a.mando,
+                     medida=a.medida)
+                for a in cfg.articulaciones],
+            'opciones': {'tipo_mando': list(cfgmod.TIPOS_MANDO_ROS),
+                         'encoder': ['incremental', 'absoluto'],
+                         'unidad_posicion': ['rad', 'deg']},
+        }
+
+    def _cargar_capas(self, ajustes: str) -> cfgmod.ConfigBrazo:
+        gp = lambda n: self.get_parameter(n).value  # noqa: E731
+        return cfgmod.cargar(self._rutas['perfil'], self._rutas['plataforma'],
+                             ajustes, int(gp('montadas')),
+                             cfgmod.parsear_estados(str(gp('estados'))))
+
+    def _restaurar(self, guardadas: bool):
+        c = self.ctrl
+        if self.autotune and not self.autotune.terminado:
+            return False, 'Autotuning en curso'
+        if c.traj.active:
+            return False, 'Espera a que el brazo esté quieto'
+        ajustes = self._rutas.get('ajustes', '') if guardadas else ''
+        if guardadas and not (ajustes and os.path.isfile(ajustes)):
+            return False, ('No hay ganancias guardadas para la plataforma '
+                           f'"{self.nombre_plataforma}"; usa "Guardar '
+                           f'ganancias" primero')
+        cfg = self._cargar_capas(ajustes)
+        with self.lock:
+            n = self._aplicar_ganancias(cfg)
+        self._refrescar_parametros()
+        origen = (f'las guardadas ({ajustes})' if guardadas else
+                  'las de fábrica (perfil + plataforma); no se guardan '
+                  'hasta que pulses "Guardar ganancias"')
+        return True, f'{n} articulaciones con {origen}'
+
+    def _aplicar_ganancias(self, cfg: cfgmod.ConfigBrazo) -> int:
+        """Copia al control las ganancias y la calibración de `cfg`."""
+        c = self.ctrl
+        incluir_armadura = bool(cfg.lazo.get('incluir_armadura', True))
+        n = 0
+        for g, k in enumerate(c.k_gpi):
+            nom = c.nombres[k]
+            if nom not in cfg.nombres:
+                continue
+            a = cfg.articulacion(nom)
+            if not a.usa_gpi:
+                continue
+            c.fijar_sintonia(nom, a.sintonia)
+            c.beta[g] = a.beta
+            c.alfa[g] = a.alfa
+            c.armadura[g] = a.armadura if incluir_armadura else 0.0
+            c.alfa_g[g] = a.alfa_gravedad
+            c.fc[g] = a.friccion_coulomb
+            c.limite[g] = a.limite_mando
+            n += 1
+        c.pct_defecto = float(cfg.trayectoria['velocidad_pct_defecto'])
+        c.supervisor.habilitado = bool(cfg.supervisor['habilitado'])
+        sh = cfg.shaper
+        c.configurar_shaper(sh['tipo'], float(sh['frecuencia_hz']),
+                            float(sh['amortiguamiento']),
+                            float(sh['tolerancia_ei']))
+        return n
+
+    def _filtrar_plataforma(self, datos: dict) -> dict:
+        """Sólo las claves editables, con el tipo correcto."""
+        out: dict = {}
+        inter = datos.get('interfaz') or {}
+        for k, v in inter.items():
+            if k not in EDITABLE_INTERFAZ:
+                raise ValueError(f'interfaz.{k} no se puede editar aquí')
+            out.setdefault('interfaz', {})[k] = EDITABLE_INTERFAZ[k](v)
+        nombres = self.cfg.nombres
+        for art, campos in (datos.get('articulaciones') or {}).items():
+            if art not in nombres:
+                raise ValueError(f'articulación desconocida "{art}"')
+            for k, v in (campos or {}).items():
+                if k not in EDITABLE_ARTICULACION:
+                    raise ValueError(f'{art}.{k} no se puede editar aquí')
+                v = EDITABLE_ARTICULACION[k](v)
+                if k == 'signo' and v not in (1.0, -1.0):
+                    raise ValueError(f'{art}.signo debe ser 1 o -1')
+                out.setdefault('articulaciones', {}).setdefault(art, {})[
+                    k] = v
+        return out
+
+    def _guardar_plataforma(self, texto: str, reiniciar: bool):
+        cambios = self._filtrar_plataforma(json.loads(texto or '{}'))
+        if not cambios:
+            return False, 'No hay cambios'
+        if reiniciar and self.ctrl.estado == 'habilitado':
+            return False, ('Deshabilita el control (con el brazo apoyado o '
+                           'en una postura segura) antes de reiniciarlo')
+        if self.autotune and not self.autotune.terminado:
+            return False, 'Autotuning en curso'
+        ruta = self.archivo_ajustes
+        base = (cfgmod.leer_yaml(ruta) if os.path.isfile(ruta)
+                else self._ajustes_actuales())
+        nuevo = cfgmod.fusionar(base, cambios)
+        # Valida ANTES de escribir: si la configuración resultante no
+        # carga, no se toca el archivo.
+        gp = lambda n: self.get_parameter(n).value  # noqa: E731
+        capas = [cfgmod.leer_yaml(self._rutas['perfil'])]
+        if self._rutas['plataforma']:
+            capas.append(cfgmod.leer_yaml(self._rutas['plataforma']))
+        capas.append(nuevo)
+        cfgmod.construir(capas, [], int(gp('montadas')),
+                         cfgmod.parsear_estados(str(gp('estados'))))
+        self._escribir_ajustes(ruta, nuevo)
+        self._rutas['ajustes'] = ruta
+        if not reiniciar:
+            return True, (f'Guardado en {ruta}; se aplica la próxima vez que '
+                          f'arranque el control')
+        if not self._reconfigurar():
+            return False, (f'Se guardó en {ruta} pero el control no pudo '
+                           f'reiniciar; revisa el log')
+        return True, f'Guardado en {ruta} y control reiniciado'
 
     def _srv_guardar(self, req, res):
         ok, msg, ruta = self.guardar(req.archivo, req.incluir_estados)

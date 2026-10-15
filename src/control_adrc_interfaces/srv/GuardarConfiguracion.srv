@@ -1,5 +1,6 @@
 # Guarda ganancias, beta, calibración, límites y conformador actuales en
-# config/autotune_<brazo>.yaml (se carga al arrancar y se puede editar).
+# config/ajustes/<brazo>_<plataforma>.yaml (se carga al arrancar y se puede
+# editar). Se fusiona con lo que ya tenga el archivo.
 string archivo             # "" = archivo por defecto
 bool incluir_estados       # también guarda activa/bloqueada/ausente
 ---

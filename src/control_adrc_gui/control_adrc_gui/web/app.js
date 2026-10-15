@@ -192,6 +192,7 @@ function construir(e) {
     tg.appendChild(el('tr', {}, celdas));
   });
   fijarVista(S.vista);
+  leerConfig();
 
   // autotune
   const aa = $('at-arts'); aa.innerHTML = '';
@@ -327,6 +328,90 @@ async function aplicarGanancias(n) {
   const r = await comando('parametros', { parametros: p });
   if (r.ok) for (const id of [...S.sucias]) if (id.startsWith(`${pref}${n}-`)) S.sucias.delete(id);
 }
+function limpiarSucias(prefijos) {
+  for (const id of [...S.sucias]) if (prefijos.some((p) => id.startsWith(p))) S.sucias.delete(id);
+}
+
+// ------------------------------------------------------------ plataforma
+const CAMPOS_INTERFAZ = [
+  ['topico_estado', 'Tópico de estado', 'text'], ['qos_estado_best_effort', 'QoS best effort (micro-ROS)', 'bool'],
+  ['tipo_mando', 'Tipo de mando', 'tipo_mando'], ['patron_topico_mando', 'Patrón tópico de mando', 'text'],
+  ['topico_mando_unico', 'Tópico de mando único', 'text'], ['topico_imu', 'Tópico IMU', 'text'],
+  ['usar_stamp_medicion', 'Usar stamp de la medición', 'bool'],
+];
+function campoPlat(id, tipo, valor, opciones) {
+  let i;
+  if (tipo === 'bool') { i = el('input', { type: 'checkbox', id }); i.checked = !!valor; }
+  else if (opciones) {
+    i = el('select', { id });
+    for (const o of opciones) i.appendChild(el('option', { value: String(o), text: String(o) }));
+    i.value = String(valor);
+  } else if (tipo === 'num') { i = el('input', { type: 'number', step: '0.0001', id }); i.value = numTexto(valor, 4); }
+  else { i = el('input', { type: 'text', id }); i.value = valor ?? ''; }
+  i.dataset.original = tipo === 'bool' ? String(!!valor) : i.value;
+  const marcar = () => i.classList.toggle('editado', valorCampo(i) !== i.dataset.original);
+  i.addEventListener('input', marcar); i.addEventListener('change', marcar);
+  return i;
+}
+function valorCampo(i) { return i.type === 'checkbox' ? String(i.checked) : i.value; }
+function pintarConfig(cfg) {
+  S.config = cfg;
+  insignia('b-plat-conf', cfg.plataforma, cfg.plataforma === 'real' ? 'aviso' : 'ok');
+  const fi = $('plat-interfaz'); fi.innerHTML = '';
+  for (const [k, txt, tipo] of CAMPOS_INTERFAZ) {
+    const ops = tipo === 'tipo_mando' ? cfg.opciones.tipo_mando : null;
+    const i = campoPlat(`pi-${k}`, tipo === 'tipo_mando' ? 'text' : tipo, cfg.interfaz[k], ops);
+    fi.appendChild(tipo === 'bool' ? el('label', { class: 'chk' }, [i, document.createTextNode(txt)])
+      : el('label', {}, [document.createTextNode(txt), i]));
+  }
+  const tb = $('tabla-plataforma').querySelector('tbody'); tb.innerHTML = '';
+  for (const a of cfg.articulaciones) {
+    const id = (k) => `pa-${a.nombre}-${k}`;
+    tb.appendChild(el('tr', { class: a.estado === 'activa' ? '' : 'inactiva' }, [
+      el('td', { text: a.nombre }), el('td', { text: a.estado }), el('td', { text: a.mando }),
+      el('td', {}, [campoPlat(id('signo'), 'num', a.signo, ['1', '-1'])]),
+      el('td', {}, [campoPlat(id('encoder'), 'text', a.encoder, cfg.opciones.encoder)]),
+      el('td', {}, [campoPlat(id('offset_absoluto'), 'num', a.offset_absoluto)]),
+      el('td', {}, [campoPlat(id('postura_encendido_urdf'), 'num', a.postura_encendido_urdf)]),
+      el('td', {}, [campoPlat(id('nombre_en_estado'), 'text', a.nombre_en_estado)]),
+      el('td', {}, [campoPlat(id('nombre_en_mando'), 'text', a.nombre_en_mando)]),
+      el('td', {}, [campoPlat(id('unidad_posicion'), 'text', a.unidad_posicion, cfg.opciones.unidad_posicion)]),
+    ]));
+  }
+  // el select de signo usa '1'/'-1'
+  for (const a of cfg.articulaciones) {
+    const s = $(`pa-${a.nombre}-signo`); s.value = a.signo < 0 ? '-1' : '1'; s.dataset.original = s.value;
+  }
+  const ar = cfg.archivos;
+  $('plat-archivos').textContent = `Perfil del brazo:  ${ar.perfil}\nPlataforma:        ${ar.plataforma}\n`
+    + `Ajustes guardados: ${ar.ajustes}${ar.ajustes_cargados ? '' : '  (todavía no existe: arranca con valores de fábrica)'}`
+    + (ar.ajustes_cargados && ar.ajustes_cargados !== ar.ajustes ? `\nCargado al arrancar: ${ar.ajustes_cargados}` : '');
+  $('nota-ajustes').textContent = `Plataforma "${cfg.plataforma}": las ganancias se guardan en ${ar.ajustes} y el control arranca con ellas`
+    + (ar.ajustes_cargados ? '.' : ' (aún no hay nada guardado: arrancó con los valores de fábrica).');
+}
+async function leerConfig() {
+  const r = await comando('config_leer');
+  if (r.ok && r.config) pintarConfig(r.config);
+}
+async function guardarPlataforma(reiniciar) {
+  const cfg = S.config; if (!cfg) return;
+  const datos = { interfaz: {}, articulaciones: {} };
+  for (const [k] of CAMPOS_INTERFAZ) {
+    const i = $(`pi-${k}`); if (valorCampo(i) === i.dataset.original) continue;
+    datos.interfaz[k] = i.type === 'checkbox' ? i.checked : i.value;
+  }
+  for (const a of cfg.articulaciones) {
+    for (const k of ['signo', 'encoder', 'offset_absoluto', 'postura_encendido_urdf', 'nombre_en_estado', 'nombre_en_mando', 'unidad_posicion']) {
+      const i = $(`pa-${a.nombre}-${k}`); if (valorCampo(i) === i.dataset.original) continue;
+      const v = ['signo', 'offset_absoluto', 'postura_encendido_urdf'].includes(k) ? Number(i.value) : i.value;
+      (datos.articulaciones[a.nombre] = datos.articulaciones[a.nombre] || {})[k] = v;
+    }
+  }
+  if (!Object.keys(datos.interfaz).length && !Object.keys(datos.articulaciones).length) { toast('No hay cambios en la plataforma', true); return; }
+  const r = await comando('guardar_plataforma', { datos, reiniciar });
+  if (r.ok) { S.clave = ''; leerConfig(); }
+}
+
 function estadosTexto() {
   return S.estado.nombres_perfil.map((n) => `${n}=${$(`est-${n}`).value}`).join(',');
 }
@@ -373,7 +458,26 @@ function enlazar() {
   };
   $('btn-cancelar-at').onclick = () => comando('cancelar_autotune');
   $('chk-calibracion').onchange = (ev) => comando('calibracion', { activar: ev.target.checked });
-  $('btn-guardar').onclick = () => comando('guardar', { incluir_estados: $('chk-estados').checked });
+  $('btn-guardar').onclick = async () => {
+    const r = await comando('guardar', { incluir_estados: $('chk-estados').checked });
+    if (r.ok) leerConfig();
+  };
+  $('btn-restaurar').onclick = async () => {
+    if (!confirm('¿Descartar los cambios sin guardar y volver a las últimas ganancias guardadas?')) return;
+    const r = await comando('restaurar_guardadas');
+    if (r.ok) limpiarSucias(['pol-', 'zt-', 'gan-', 'in-pct-def', 'sh-']);
+  };
+  $('btn-fabrica').onclick = async () => {
+    if (!confirm('¿Cargar los valores de fábrica (perfil + plataforma)? No se borra lo guardado: si no te gustan, usa "Volver a las guardadas".')) return;
+    const r = await comando('restaurar_fabrica');
+    if (r.ok) limpiarSucias(['pol-', 'zt-', 'gan-', 'in-pct-def', 'sh-']);
+  };
+  $('btn-plat-recargar').onclick = () => leerConfig();
+  $('btn-plat-guardar').onclick = () => guardarPlataforma(false);
+  $('btn-plat-reiniciar').onclick = () => {
+    if (!confirm('Se guardan los cambios y se REINICIA el control (queda deshabilitado). ¿Continuar?')) return;
+    guardarPlataforma(true);
+  };
   $('btn-pausa').onclick = (ev) => { S.pausa = !S.pausa; ev.target.textContent = S.pausa ? 'Reanudar' : 'Pausar'; };
   document.addEventListener('keydown', (ev) => {
     if (ev.code === 'Space' && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {

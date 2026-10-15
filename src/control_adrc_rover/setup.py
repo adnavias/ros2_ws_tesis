@@ -19,6 +19,8 @@ setup(
             glob(os.path.join('config', 'brazos', '*.yaml'))),
         (os.path.join('share', package_name, 'config', 'plataformas'),
             glob(os.path.join('config', 'plataformas', '*.yaml'))),
+        (os.path.join('share', package_name, 'config', 'ajustes'),
+            glob(os.path.join('config', 'ajustes', '*.yaml'))),
         (os.path.join('share', package_name, 'launch'),
             glob(os.path.join('launch', '*.launch.py'))),
     ],

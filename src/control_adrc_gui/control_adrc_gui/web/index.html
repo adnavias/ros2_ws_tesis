@@ -113,6 +113,36 @@
     <div class="nota c-zeta">p(s) = (s²+2ζω<sub>n</sub>s+ω<sub>n</sub>²)(s²+2ζ<sub>obs</sub>ω<sub>p</sub>s+ω<sub>p</sub>²), ω<sub>p</sub> = ω<sub>n</sub>/ε. "Aplicar" pone esa articulación en modo ζ. ζ = 1, ε = 0.25 equivale a [ω<sub>n</sub>, ω<sub>n</sub>, 4ω<sub>n</sub>, 4ω<sub>n</sub>]. Recomendado: ζ entre 1 y 1.3, ε = 0.25; ζ &lt; 1 da polos complejos (sobreimpulso).</div>
     <div class="nota c-cal">β: margen de inercia (control con β·M). α, armadura, α_g, fricción: calibración del modelo (las llena el autotuning). Límite: corriente máxima [A], no puede pasar la continua del motor ni el par del reductor.</div>
     <div class="nota">Sin sobreimpulso con κ = M<sub>ctrl</sub>/M<sub>real</sub> entre ~0.6 y ~1.4. Cada cambio se valida en el control antes de aplicarse.</div>
+    <div class="fila-botones">
+      <button id="btn-guardar" class="btn primario" title="Escribe las ganancias actuales en el archivo de ajustes de esta plataforma; el control arrancará con ellas">Guardar ganancias</button>
+      <button id="btn-restaurar" class="btn" title="Descarta los cambios sin guardar y vuelve a lo último que guardaste">Volver a las guardadas</button>
+      <button id="btn-fabrica" class="btn advertencia" title="Valores del perfil del brazo y de la plataforma, sin el archivo de ajustes (no lo borra)">Valores de fábrica</button>
+      <label class="chk"><input type="checkbox" id="chk-estados"> Guardar también activa/bloqueada/ausente</label>
+    </div>
+    <div class="nota" id="nota-ajustes"></div>
+  </section>
+
+  <!-- ============ Plataforma ============ -->
+  <section class="tarjeta ancha">
+    <div class="cabecera"><h2>Configuración de la plataforma <span class="insignia" id="b-plat-conf">—</span></h2>
+      <div class="controles">
+        <button id="btn-plat-recargar" class="btn chico">Descartar cambios</button>
+        <button id="btn-plat-guardar" class="btn chico">Guardar (al próximo arranque)</button>
+        <button id="btn-plat-reiniciar" class="btn chico primario">Guardar y reiniciar el control</button>
+      </div>
+    </div>
+    <details id="plat-detalles">
+      <summary>Tópicos, signos, encoders y nombres (lo del archivo <code>config/plataformas/…</code>)</summary>
+      <div class="fila" id="plat-interfaz"></div>
+      <div class="desliza">
+      <table class="tabla" id="tabla-plataforma">
+        <thead><tr><th>Art.</th><th>estado</th><th>mando</th><th title="-1 si gira al revés">signo</th><th>encoder</th><th title="Cero del encoder absoluto respecto al URDF [rad]">offset abs. [rad]</th><th title="Postura física al encender (encoder incremental) [rad, URDF]">postura encendido [rad]</th><th>nombre en estado</th><th>nombre en mando</th><th>unidad</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      </div>
+      <div class="nota">Los cambios se guardan en el archivo de ajustes de esta plataforma (encima de <code>config/plataformas/…</code>, que no se toca). Signos, encoders, tópicos y nombres se aplican al reiniciar el control: deshabilítalo y deja el brazo apoyado antes de "Guardar y reiniciar". Prueba un cambio de signo con 10 % de velocidad y 5°.</div>
+      <pre class="salida" id="plat-archivos"></pre>
+    </details>
   </section>
 
   <!-- ============ Conformador ============ -->
@@ -150,15 +180,9 @@
 
   <!-- ============ Guardar y eventos ============ -->
   <section class="tarjeta">
-    <div class="cabecera"><h2>Guardar y eventos</h2></div>
+    <div class="cabecera"><h2>Calibración y eventos</h2></div>
     <div class="fila">
       <label class="chk"><input type="checkbox" id="chk-calibracion"> Modo calibración (exige esta página abierta)</label>
-    </div>
-    <div class="fila">
-      <label class="chk"><input type="checkbox" id="chk-estados"> Incluir estados de articulación</label>
-    </div>
-    <div class="fila-botones">
-      <button id="btn-guardar" class="btn primario">Guardar configuración al YAML</button>
     </div>
     <ul class="eventos" id="eventos"></ul>
   </section>
