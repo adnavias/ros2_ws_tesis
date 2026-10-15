@@ -4,7 +4,12 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
-const S = { estado: null, clave: '', pausa: false, hist: {}, sucias: new Set() };
+// Quita ceros finales sólo de la parte decimal: 50 -> '50', 6.540 -> '6.54'.
+function numTexto(x, dec) {
+  const t = Number(x).toFixed(dec);
+  return t.includes('.') ? t.replace(/0+$/, '').replace(/\.$/, '') : t;
+}
+const S = { estado: null, clave: '', pausa: false, hist: {}, sucias: new Set(), vista: 'polos' };
 const MAX_PUNTOS = 2400;
 
 // ------------------------------------------------------------ utilidades
@@ -42,7 +47,7 @@ function el(tag, attrs = {}, hijos = []) {
 }
 function numInput(id, valor, paso = 0.01) {
   const i = el('input', { type: 'number', step: String(paso), id });
-  if (valor !== null && valor !== undefined) i.value = Number(valor).toFixed(4).replace(/\.?0+$/, '');
+  if (valor !== null && valor !== undefined) i.value = numTexto(valor, 4);
   i.addEventListener('input', () => S.sucias.add(id));
   return i;
 }
@@ -50,7 +55,7 @@ function fijarSiLibre(id, valor, dec = 4) {
   const i = $(id);
   if (!i || S.sucias.has(id) || document.activeElement === i) return;
   if (valor === null || valor === undefined) { i.value = ''; return; }
-  i.value = Number(valor).toFixed(dec).replace(/\.?0+$/, '');
+  i.value = numTexto(valor, dec);
 }
 
 // ------------------------------------------------------------ gráficas
@@ -172,17 +177,12 @@ function construir(e) {
   const tg = $('tabla-ganancias').querySelector('tbody'); tg.innerHTML = '';
   e.nombres.forEach((n, k) => {
     if (e.mando[k] === 'posicion_directa') return;
-    const celdas = [el('td', { text: n })];
-    const sel = el('select', { id: `sin-${n}` });
-    for (const o of ['polos', 'zeta']) sel.appendChild(el('option', { value: o, text: o }));
-    sel.value = e.sintonia && e.sintonia[k] ? e.sintonia[k] : 'polos';
-    sel.onchange = () => { S.sucias.add(`sin-${n}`); modoSintonia(n); };
-    celdas.push(el('td', {}, [sel]));
-    for (let p = 0; p < 4; p++) celdas.push(el('td', {}, [numInput(`pol-${n}-${p}`, e.polos[k][p], 0.5)]));
+    const celdas = [el('td', { text: n }), el('td', {}, [el('span', { class: 'modo', id: `modo-${n}` })])];
+    for (let p = 0; p < 4; p++) celdas.push(el('td', { class: 'c-polos' }, [numInput(`pol-${n}-${p}`, e.polos[k][p], 0.5)]));
     for (const [c, paso] of [['wn', 0.5], ['zeta', 0.05], ['eps', 0.01], ['zeta_observador', 0.05]])
-      celdas.push(el('td', {}, [numInput(`zt-${n}-${c}`, null, paso)]));
+      celdas.push(el('td', { class: 'c-zeta' }, [numInput(`zt-${n}-${c}`, null, paso)]));
     for (const c of ['beta', 'alfa', 'armadura', 'alfa_gravedad', 'friccion_coulomb', 'limite_mando'])
-      celdas.push(el('td', {}, [numInput(`gan-${n}-${c}`, null, 0.01)]));
+      celdas.push(el('td', { class: 'c-cal' }, [numInput(`gan-${n}-${c}`, null, 0.01)]));
     celdas.push(el('td', { class: 'num', id: `kap-${n}` }));
     celdas.push(el('td', { class: 'num', id: `sob-${n}` }));
     celdas.push(el('td', { class: 'num', id: `sat-${n}` }));
@@ -190,8 +190,8 @@ function construir(e) {
     b.onclick = () => aplicarGanancias(n);
     celdas.push(el('td', {}, [b]));
     tg.appendChild(el('tr', {}, celdas));
-    modoSintonia(n);
   });
+  fijarVista(S.vista);
 
   // autotune
   const aa = $('at-arts'); aa.innerHTML = '';
@@ -234,8 +234,11 @@ function actualizar(e) {
   e.nombres.forEach((n, k) => {
     const a = $(`act-${n}`); if (a) a.textContent = fmt(e.posicion_deg[k]) + '°';
     if (e.mando[k] === 'posicion_directa') return;
-    if (e.sintonia && !S.sucias.has(`sin-${n}`) && libre(`sin-${n}`) && $(`sin-${n}`)) {
-      if ($(`sin-${n}`).value !== e.sintonia[k]) { $(`sin-${n}`).value = e.sintonia[k]; modoSintonia(n); }
+    const md = $(`modo-${n}`);
+    if (md && e.sintonia) {
+      const m = e.sintonia[k] || 'polos';
+      md.textContent = m === 'zeta' ? 'ζ, ωn, ε' : 'polos';
+      md.classList.toggle('igual', m === S.vista);
     }
     for (let p = 0; p < 4; p++) {
       fijarSiLibre(`pol-${n}-${p}`, e.polos[k][p], 3);
@@ -283,38 +286,56 @@ function moverTodas() {
   if (!Object.keys(pos).length) { toast('No hay objetivos escritos', true); return; }
   comando('mover', { posiciones_deg: pos, velocidad_pct: Number($('in-pct').value) });
 }
-function modoSintonia(n) {
-  const zeta = $(`sin-${n}`).value === 'zeta';
-  for (let p = 0; p < 4; p++) $(`pol-${n}-${p}`).disabled = zeta;
-  for (const c of ['wn', 'zeta', 'eps', 'zeta_observador']) $(`zt-${n}-${c}`).disabled = !zeta;
+// Pestañas: "polos" y "zeta" eligen con qué se programa la sintonía; "cal"
+// muestra β, α, armadura, α_g, fricción y límite. Cada pestaña aplica sólo
+// lo suyo.
+function fijarVista(v) {
+  S.vista = v;
+  try { localStorage.setItem('vista-ganancias', v); } catch (err) { /* sin almacenamiento */ }
+  const t = $('tabla-ganancias');
+  t.classList.remove('vista-polos', 'vista-zeta', 'vista-cal'); t.classList.add(`vista-${v}`);
+  const tarjeta = t.closest('section');
+  tarjeta.classList.remove('vista-polos-nota', 'vista-zeta-nota', 'vista-cal-nota'); tarjeta.classList.add(`vista-${v}-nota`);
+  for (const b of document.querySelectorAll('#pest-ganancias .pestana')) {
+    const on = b.dataset.vista === v; b.classList.toggle('activa', on); b.setAttribute('aria-selected', on);
+  }
+  if (S.estado) S.estado.nombres.forEach((n, k) => {
+    const md = $(`modo-${n}`); if (md && S.estado.sintonia) md.classList.toggle('igual', (S.estado.sintonia[k] || 'polos') === v);
+  });
 }
 async function aplicarGanancias(n) {
-  const p = {}; const modo = $(`sin-${n}`).value;
-  p[`${n}.sintonia`] = modo;
-  if (modo === 'polos') {
+  const p = {}; const v = S.vista;
+  if (v === 'polos') {
     const pol = [];
     for (let k = 0; k < 4; k++) pol.push(Number($(`pol-${n}-${k}`).value));
     if (pol.some((x) => !(x > 0))) { toast('Los 4 polos deben ser positivos', true); return; }
-    p[`${n}.polos`] = pol;
-  } else {
+    p[`${n}.sintonia`] = 'polos'; p[`${n}.polos`] = pol;
+  } else if (v === 'zeta') {
     const z = {};
     for (const c of ['wn', 'zeta', 'eps', 'zeta_observador']) z[c] = Number($(`zt-${n}-${c}`).value || 0);
     if (!(z.wn > 0)) { toast('ωn debe ser > 0', true); return; }
     if (!(z.eps > 0 && z.eps <= 1)) { toast('ε debe estar en (0, 1]', true); return; }
     if (!(z.zeta >= 0.2 && z.zeta <= 5)) { toast('ζ debe estar en [0.2, 5]', true); return; }
+    p[`${n}.sintonia`] = 'zeta';
     for (const c of ['wn', 'zeta', 'eps', 'zeta_observador']) p[`${n}.${c}`] = z[c];
+  } else {
+    for (const c of ['beta', 'alfa', 'armadura', 'alfa_gravedad', 'friccion_coulomb', 'limite_mando']) {
+      const x = $(`gan-${n}-${c}`).value; if (x !== '') p[`${n}.${c}`] = Number(x);
+    }
   }
-  for (const c of ['beta', 'alfa', 'armadura', 'alfa_gravedad', 'friccion_coulomb', 'limite_mando']) {
-    const v = $(`gan-${n}-${c}`).value; if (v !== '') p[`${n}.${c}`] = Number(v);
-  }
+  const pref = { polos: 'pol-', zeta: 'zt-', cal: 'gan-' }[v];
   const r = await comando('parametros', { parametros: p });
-  if (r.ok) for (const id of [...S.sucias]) if (id.includes(`-${n}-`) || id === `sin-${n}`) S.sucias.delete(id);
+  if (r.ok) for (const id of [...S.sucias]) if (id.startsWith(`${pref}${n}-`)) S.sucias.delete(id);
 }
 function estadosTexto() {
   return S.estado.nombres_perfil.map((n) => `${n}=${$(`est-${n}`).value}`).join(',');
 }
 
 function enlazar() {
+  let vista = null;
+  try { vista = localStorage.getItem('vista-ganancias'); } catch (err) { /* sin almacenamiento */ }
+  fijarVista(['polos', 'zeta', 'cal'].includes(vista) ? vista : 'polos');
+  for (const b of document.querySelectorAll('#pest-ganancias .pestana')) b.onclick = () => fijarVista(b.dataset.vista);
   $('btn-paro').onclick = () => comando('paro');
   $('btn-liberar').onclick = () => { if (confirm('¿Liberar el paro de emergencia? El control queda deshabilitado.')) comando('liberar'); };
   $('btn-habilitar').onclick = () => comando('habilitar');

@@ -301,7 +301,7 @@ Los objetivos fuera de los límites del URDF (menos `margen_limite`) se recortan
 - Gráficas en vivo de la articulación elegida: posición real vs. trayectoria deseada, error y mando con sus límites.
 - Mover: objetivo en grados por articulación, % de velocidad, "Mover sólo ésta", ir a cero, detener.
 - Perfil y articulaciones: elegir brazo y poner cada articulación activa/bloqueada/ausente (reinicia el control y fija el cero).
-- Ganancias: sintonía por polos (λ1..λ4) o por ζ, ω<sub>n</sub>, ε (selector por articulación; la otra vista muestra el equivalente), β, α, armadura, α_g, fricción y límite por articulación, con kappa estimado, sobreimpulso y saturaciones. Cada cambio lo valida el control; si no es válido aparece el motivo.
+- Ganancias, en tres pestañas: "Por polos λ", "Por ζ, ω<sub>n</sub>, ε" y "Calibración y límites". La columna "en uso" dice con qué modo se controla cada articulación; "Aplicar" en la pestaña de polos o de ζ la pone en ese modo, y en la de calibración aplica β, α, armadura, α_g, fricción y límite por articulación, con kappa estimado, sobreimpulso y saturaciones. Cada cambio lo valida el control; si no es válido aparece el motivo.
 - Conformador: tipo, frecuencia y amortiguamiento; botón "Estimar modo".
 - Autotuning: articulaciones, aplicar/guardar, progreso y resultados.
 - Guardar configuración al YAML y lista de eventos.

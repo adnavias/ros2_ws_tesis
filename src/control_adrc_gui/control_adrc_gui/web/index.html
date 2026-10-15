@@ -94,13 +94,25 @@
         <button id="btn-pct-def" class="btn chico">Aplicar</button>
       </div>
     </div>
+    <div class="pestanas" role="tablist" id="pest-ganancias">
+      <button class="pestana" role="tab" data-vista="polos">Por polos λ</button>
+      <button class="pestana" role="tab" data-vista="zeta">Por ζ, ω<sub>n</sub>, ε</button>
+      <button class="pestana" role="tab" data-vista="cal">Calibración y límites</button>
+    </div>
     <div class="desliza">
-    <table class="tabla" id="tabla-ganancias">
-      <thead><tr><th>Art.</th><th title="Cómo se eligen las ganancias">sintonía</th><th>λ1</th><th>λ2</th><th>λ3</th><th>λ4</th><th title="Ancho de banda del lazo [rad/s]">ω<sub>n</sub></th><th title="Amortiguamiento del par lento">ζ</th><th title="ω_n / ω_observador (0 &lt; ε ≤ 1)">ε</th><th title="Amortiguamiento del observador (0 = igual a ζ)">ζ<sub>obs</sub></th><th>β</th><th>α</th><th>armadura</th><th>α_g</th><th>fricción</th><th>límite</th><th>κ est.</th><th>sobreimp.</th><th>sat.</th><th></th></tr></thead>
+    <table class="tabla vista-polos" id="tabla-ganancias">
+      <thead><tr><th>Art.</th><th title="Modo con el que se controla ahora">en uso</th>
+        <th class="c-polos">λ1</th><th class="c-polos">λ2</th><th class="c-polos">λ3</th><th class="c-polos">λ4</th>
+        <th class="c-zeta" title="Ancho de banda del lazo [rad/s]">ω<sub>n</sub></th><th class="c-zeta" title="Amortiguamiento del par lento">ζ</th><th class="c-zeta" title="ω_n / ω_observador (0 &lt; ε ≤ 1)">ε</th><th class="c-zeta" title="Amortiguamiento del observador (0 = igual a ζ)">ζ<sub>obs</sub></th>
+        <th class="c-cal">β</th><th class="c-cal">α</th><th class="c-cal">armadura</th><th class="c-cal">α_g</th><th class="c-cal">fricción</th><th class="c-cal">límite</th>
+        <th>κ est.</th><th>sobreimp.</th><th>sat.</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
     </div>
-    <div class="nota">Ganancias del GPI, por <b>polos</b>: p(s) = Π(s+λᵢ) [rad/s], o por <b>zeta</b>: p(s) = (s²+2ζω<sub>n</sub>s+ω<sub>n</sub>²)(s²+2ζ<sub>obs</sub>ω<sub>p</sub>s+ω<sub>p</sub>²) con ω<sub>p</sub> = ω<sub>n</sub>/ε. Se edita la vista del modo elegido; la otra muestra el equivalente (con ζ &lt; 1 los polos son complejos: se muestra −Re y la parte imaginaria al pasar el ratón). ζ = 1, ε = 0.25 equivale a [ω<sub>n</sub>, ω<sub>n</sub>, 4ω<sub>n</sub>, 4ω<sub>n</sub>]. Sin sobreimpulso con κ = M<sub>ctrl</sub>/M<sub>real</sub> entre ~0.6 y ~1.4. Cada cambio se valida en el control antes de aplicarse.</div>
+    <div class="nota c-polos">Los 4 polos reales del GPI: p(s) = Π(s+λᵢ) [rad/s]. "Aplicar" pone esa articulación en modo polos. Si está en modo ζ, aquí ves los polos equivalentes (con ζ &lt; 1 son complejos: se muestra −Re y la parte imaginaria al pasar el ratón).</div>
+    <div class="nota c-zeta">p(s) = (s²+2ζω<sub>n</sub>s+ω<sub>n</sub>²)(s²+2ζ<sub>obs</sub>ω<sub>p</sub>s+ω<sub>p</sub>²), ω<sub>p</sub> = ω<sub>n</sub>/ε. "Aplicar" pone esa articulación en modo ζ. ζ = 1, ε = 0.25 equivale a [ω<sub>n</sub>, ω<sub>n</sub>, 4ω<sub>n</sub>, 4ω<sub>n</sub>]. Recomendado: ζ entre 1 y 1.3, ε = 0.25; ζ &lt; 1 da polos complejos (sobreimpulso).</div>
+    <div class="nota c-cal">β: margen de inercia (control con β·M). α, armadura, α_g, fricción: calibración del modelo (las llena el autotuning). Límite: corriente máxima [A], no puede pasar la continua del motor ni el par del reductor.</div>
+    <div class="nota">Sin sobreimpulso con κ = M<sub>ctrl</sub>/M<sub>real</sub> entre ~0.6 y ~1.4. Cada cambio se valida en el control antes de aplicarse.</div>
   </section>
 
   <!-- ============ Conformador ============ -->
