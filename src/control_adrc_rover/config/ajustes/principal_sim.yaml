@@ -1,0 +1,59 @@
+# Ajustes del brazo "principal" en la plataforma "sim"
+# (ganancias, calibración y cambios de plataforma guardados desde la interfaz o el
+# autotuning). Se aplican ENCIMA del perfil y de la plataforma al arrancar.
+# Editable a mano. Si lo borras, el control arranca con los valores de fábrica.
+# Guardado: 2026-10-15 13:47:05
+articulaciones:
+  Joint_1:
+    sintonia: zeta
+    wn: 8.0
+    zeta: 1.0
+    eps: 0.25
+    beta: 1.0
+    alfa: 1.0
+    armadura: 0.0
+    alfa_gravedad: 1.0
+    friccion_coulomb: 0.25
+    limite_mando: 6.54
+  Joint_2:
+    sintonia: zeta
+    wn: 8.0
+    zeta: 1.0
+    eps: 0.25
+    beta: 1.0
+    alfa: 1.0
+    armadura: 0.0
+    alfa_gravedad: 1.0
+    friccion_coulomb: 0.497
+    limite_mando: 6.85
+  Joint_3:
+    sintonia: zeta
+    wn: 10.0
+    zeta: 0.5
+    eps: 0.25
+    beta: 1.0
+    alfa: 1.0
+    armadura: 0.0
+    alfa_gravedad: 1.0
+    friccion_coulomb: 0.497
+    limite_mando: 6.85
+  Joint_4:
+    sintonia: zeta
+    wn: 8.0
+    zeta: 1.0
+    eps: 0.25
+    beta: 1.0
+    alfa: 1.0
+    armadura: 0.0
+    alfa_gravedad: 1.0
+    friccion_coulomb: 0.25
+    limite_mando: 6.54
+trayectoria:
+  velocidad_pct_defecto: 50.0
+shaper:
+  tipo: ninguno
+  frecuencia_hz: 2.0
+  amortiguamiento: 0.05
+  tolerancia_ei: 0.05
+supervisor:
+  habilitado: true
