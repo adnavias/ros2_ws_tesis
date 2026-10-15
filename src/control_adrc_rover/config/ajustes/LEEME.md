@@ -2,7 +2,7 @@
 
 Aquí el control guarda `<brazo>_<plataforma>.yaml` (por ejemplo
 `principal_sim.yaml` y `principal_real.yaml`) cuando se usa
-"Guardar ganancias" o "Guardar plataforma" en la interfaz, o al terminar
+"Guardar ajustes" o "Guardar plataforma" en la interfaz, o al terminar
 el autotuning con "Guardar al YAML".
 
 Al arrancar se aplican ENCIMA de `config/brazos/<brazo>.yaml` y

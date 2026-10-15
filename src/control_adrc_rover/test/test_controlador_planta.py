@@ -193,3 +193,32 @@ def test_error_excesivo_sostiene_y_luego_falla(cargar):
     ctrl.t_prev = 12.0                             # se repite en < 3 s
     cmd = ctrl._ley(ctrl.q, np.zeros(5), 0.005, False)
     assert ctrl.estado == 'falla' and np.allclose(cmd, 0.0)
+
+
+def test_modo_tiempo_tarda_lo_pedido_o_alarga_con_aviso(cargar):
+    from control_adrc_rover.nucleo.planta import simular
+    cfg = cargar('sim', extra={'trayectoria': {'modo': 'tiempo',
+                                               'duracion_defecto': 3.0}})
+    ctrl, planta = _armar(cfg)
+    simular(ctrl, planta, 0.2, [])
+    assert ctrl.estado == 'habilitado'
+    obj = np.radians([20.0, 5.0, -10.0, 5.0, np.nan])
+    ok, msg, tr = ctrl.planear(obj)                 # duración por defecto
+    assert ok and tr.duration == pytest.approx(3.0) and 'en 3.00 s' in msg
+    ok, msg, tr = ctrl.planear(obj, duracion=5.0)   # explícita
+    assert ok and tr.duration == pytest.approx(5.0)
+    ok, msg, tr = ctrl.planear(obj, pct=50.0)       # % explícito gana
+    assert ok and 'a 50 %' in msg
+    ok, msg, tr = ctrl.planear(np.radians([170.0, 5.0, -10.0, 5.0, np.nan]),
+                               duracion=0.5)
+    assert ok and tr.duration > 0.5 and 'pide al menos' in msg
+
+
+def test_modo_tiempo_mueve_todas_a_la_vez(cargar):
+    from control_adrc_rover.nucleo.planta import simular
+    cfg = cargar('sim')
+    ctrl, planta = _armar(cfg, viscosa=np.array([1.0, 1.5, 1.0, 1.0]))
+    simular(ctrl, planta, 0.2, [])
+    ok, _ = ctrl.mover(np.radians([10.0, 5.0, -5.0, 5.0, np.nan]),
+                       duracion=2.0)
+    assert ok and ctrl.traj.duration == pytest.approx(2.0)

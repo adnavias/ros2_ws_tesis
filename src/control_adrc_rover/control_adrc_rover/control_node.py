@@ -38,7 +38,8 @@ Interfaces (prefijo ~ = /adrc_simple/):
     Parámetros dinámicos (validados)
         <J>.sintonia (polos | zeta), <J>.polos, <J>.wn, <J>.zeta,
         <J>.eps, <J>.zeta_observador, <J>.beta, <J>.alfa, <J>.armadura,
-        <J>.alfa_gravedad, <J>.friccion_coulomb, <J>.limite_mando, velocidad_pct_defecto,
+        <J>.alfa_gravedad, <J>.friccion_coulomb, <J>.limite_mando,
+        velocidad_pct_defecto, trayectoria.modo, trayectoria.duracion_defecto,
         shaper.tipo, shaper.frecuencia_hz, shaper.amortiguamiento,
         shaper.tolerancia_ei, supervisor.habilitado
 
@@ -447,6 +448,12 @@ class NodoControl(NodoBase):
             self._declarar('velocidad_pct_defecto', float(c.pct_defecto),
                            '% de velocidad por defecto',
                            (c.pct_min, c.pct_max))
+            self._declarar('trayectoria.modo', c.modo_tray,
+                           'velocidad (%) | tiempo (s)')
+            self._declarar('trayectoria.duracion_defecto',
+                           float(c.duracion_defecto),
+                           'Duración por defecto en modo tiempo [s]',
+                           (c.traj.t_min, c.duracion_max))
             for g, k in enumerate(c.k_gpi):
                 a = c.movibles[k]
                 n = a.nombre
@@ -537,6 +544,19 @@ class NodoControl(NodoBase):
                         raise ValueError(f'fuera de [{c.pct_min}, '
                                          f'{c.pct_max}]')
                     cambios.append(lambda v=v: setattr(c, 'pct_defecto', v))
+                elif nombre == 'trayectoria.modo':
+                    v = str(p.value)
+                    if v not in cfgmod.MODOS_TRAYECTORIA:
+                        raise ValueError(
+                            f'usa uno de {list(cfgmod.MODOS_TRAYECTORIA)}')
+                    cambios.append(lambda v=v: setattr(c, 'modo_tray', v))
+                elif nombre == 'trayectoria.duracion_defecto':
+                    v = float(p.value)
+                    if not c.traj.t_min <= v <= c.duracion_max:
+                        raise ValueError(f'fuera de [{c.traj.t_min}, '
+                                         f'{c.duracion_max}] s')
+                    cambios.append(lambda v=v: setattr(
+                        c, 'duracion_defecto', v))
                 elif nombre.startswith('shaper.'):
                     cambios.append(self._cambio_shaper(nombre, p.value))
                 elif nombre == 'supervisor.habilitado':
@@ -840,6 +860,8 @@ class NodoControl(NodoBase):
         m.saturaciones = [int(x) for x in d.saturaciones]
         m.saturado = [bool(x) for x in d.saturado]
         m.velocidad_pct_defecto = float(ctrl.pct_defecto)
+        m.modo_trayectoria = ctrl.modo_tray
+        m.duracion_defecto = float(ctrl.duracion_defecto)
         m.supervisor_habilitado = bool(ctrl.supervisor.habilitado)
         m.shaper_tipo = ctrl.shaper.tipo
         m.shaper_frecuencia_hz = float(ctrl.shaper.frecuencia_hz)
@@ -880,7 +902,8 @@ class NodoControl(NodoBase):
     # ==================================================================
     # Objetivos
     # ==================================================================
-    def _mover(self, objetivo_usr: np.ndarray, pct: Optional[float]):
+    def _mover(self, objetivo_usr: np.ndarray, pct: Optional[float],
+               duracion: Optional[float] = None):
         """Planea fuera del lazo y aplica con lock. Devuelve (ok, msg)."""
         ctrl = self.ctrl
         if ctrl is None or not self.activo:
@@ -888,7 +911,7 @@ class NodoControl(NodoBase):
         if self.autotune and not self.autotune.terminado:
             return False, 'Autotuning en curso: objetivo ignorado'
         with self.lock_plan:
-            ok, msg, tr = ctrl.planear(objetivo_usr, pct)
+            ok, msg, tr = ctrl.planear(objetivo_usr, pct, duracion=duracion)
             if ok:
                 with self.lock:
                     ctrl.aplicar_trayectoria(tr)
@@ -918,7 +941,14 @@ class NodoControl(NodoBase):
                 f'las articulaciones del perfil) o {n_act} (sólo las activas: '
                 f'{ctrl.nombres}), más un % opcional; llegaron {data.size}')
             return
-        self._mover(np.radians(angulos), pct)
+        self._mover_extra(np.radians(angulos), pct)
+
+    def _mover_extra(self, objetivo_usr: np.ndarray, extra: Optional[float]):
+        """El valor extra de los tópicos es % en modo velocidad y segundos
+        en modo tiempo."""
+        if self.ctrl.modo_tray == 'tiempo':
+            return self._mover(objetivo_usr, None, extra)
+        return self._mover(objetivo_usr, extra)
 
     def _cb_objetivo_nombres(self, msg: JointState) -> None:
         ctrl = self.ctrl
@@ -931,7 +961,7 @@ class NodoControl(NodoBase):
             self.get_logger().error(f'objetivo por nombres: {exc}')
             return
         pct = msg.velocity[0] if len(msg.velocity) > 0 else None
-        self._mover(obj, pct)
+        self._mover_extra(obj, pct)
 
     def _cb_objetivo_rad(self, msg: JointState) -> None:
         ctrl = self.ctrl
@@ -1071,7 +1101,9 @@ class NodoControl(NodoBase):
         sh = c.cfg.shaper
         return {
             'articulaciones': arts,
-            'trayectoria': {'velocidad_pct_defecto': float(c.pct_defecto)},
+            'trayectoria': {'velocidad_pct_defecto': float(c.pct_defecto),
+                            'modo': c.modo_tray,
+                            'duracion_defecto': float(c.duracion_defecto)},
             'shaper': {'tipo': str(sh['tipo']),
                        'frecuencia_hz': float(sh['frecuencia_hz']),
                        'amortiguamiento': float(sh['amortiguamiento']),
@@ -1196,14 +1228,14 @@ class NodoControl(NodoBase):
         if guardadas and not (ajustes and os.path.isfile(ajustes)):
             return False, ('No hay ganancias guardadas para la plataforma '
                            f'"{self.nombre_plataforma}"; usa "Guardar '
-                           f'ganancias" primero')
+                           f'ajustes" primero')
         cfg = self._cargar_capas(ajustes)
         with self.lock:
             n = self._aplicar_ganancias(cfg)
         self._refrescar_parametros()
         origen = (f'las guardadas ({ajustes})' if guardadas else
                   'las de fábrica (perfil + plataforma); no se guardan '
-                  'hasta que pulses "Guardar ganancias"')
+                  'hasta que pulses "Guardar ajustes"')
         return True, f'{n} articulaciones con {origen}'
 
     def _aplicar_ganancias(self, cfg: cfgmod.ConfigBrazo) -> int:
@@ -1227,6 +1259,8 @@ class NodoControl(NodoBase):
             c.limite[g] = a.limite_mando
             n += 1
         c.pct_defecto = float(cfg.trayectoria['velocidad_pct_defecto'])
+        c.modo_tray = str(cfg.trayectoria['modo'])
+        c.duracion_defecto = float(cfg.trayectoria['duracion_defecto'])
         c.supervisor.habilitado = bool(cfg.supervisor['habilitado'])
         sh = cfg.shaper
         c.configurar_shaper(sh['tipo'], float(sh['frecuencia_hz']),
@@ -1370,7 +1404,8 @@ class NodoControl(NodoBase):
             gh.abort()
             return res
         pct = req.velocidad_pct if req.velocidad_pct > 0.0 else None
-        ok, msg = self._mover(obj, pct)
+        dur = req.duracion_s if req.duracion_s > 0.0 else None
+        ok, msg = self._mover(obj, pct, dur)
         if not ok:
             res.exito, res.mensaje = False, msg
             gh.abort()
@@ -1490,6 +1525,15 @@ class NodoControl(NodoBase):
                 params.append(Parameter(f'{n}.{campo}',
                                         Parameter.Type.DOUBLE,
                                         float(arr[g])))
+        params += [
+            Parameter('velocidad_pct_defecto', Parameter.Type.DOUBLE,
+                      float(c.pct_defecto)),
+            Parameter('trayectoria.modo', Parameter.Type.STRING,
+                      str(c.modo_tray)),
+            Parameter('trayectoria.duracion_defecto', Parameter.Type.DOUBLE,
+                      float(c.duracion_defecto)),
+            Parameter('supervisor.habilitado', Parameter.Type.BOOL,
+                      bool(c.supervisor.habilitado))]
         self._cargando_params = True
         try:
             self.set_parameters(params)

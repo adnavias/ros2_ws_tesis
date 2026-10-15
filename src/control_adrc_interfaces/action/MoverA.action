@@ -1,7 +1,9 @@
 # Mueve el brazo a un objetivo en grados (coordenadas del usuario).
 string[] nombres           # vacío = todas las activas, en orden
 float64[] posiciones_deg   # NaN = conservar
-float64 velocidad_pct      # <= 0 = velocidad por defecto
+float64 velocidad_pct      # > 0: modo velocidad con este %
+float64 duracion_s         # > 0: modo tiempo, tarda esto [s] (gana a velocidad_pct)
+                           # ambos <= 0: modo y valor por defecto
 ---
 bool exito
 string mensaje

@@ -276,7 +276,24 @@ Devuelve el error final y el sobreimpulso medido. Cancelarla deja el brazo donde
 ros2 topic pub --once /target_joint_states sensor_msgs/msg/JointState "{name: ['Joint_2'], position: [0.5]}"
 ```
 
-### 8.5 Velocidad
+### 8.5 Velocidad o tiempo
+
+Hay dos modos de generar la trayectoria (en la interfaz, pestañas "Por velocidad" y "Por tiempo" de la tarjeta Mover; ambos sirven para "Mover sólo ésta" y "Mover todas"):
+
+- **Por velocidad (%)**: la duración sale de la distancia y del %; un movimiento corto tarda poco y uno largo, más.
+- **Por tiempo (s)**: todas las articulaciones tardan lo que pidas (5 s, 1 s, 0.5 s...), sin importar la distancia. Si es muy poco para la velocidad/aceleración máxima física (`v_max_fisica`, 200 %) o para la corriente, se alarga y el mensaje lo dice ("pediste 0.50 s, pero ... pide al menos 1.84 s"). Rango: `duracion_minima` (0.5 s) a `duracion_max` (60 s).
+
+El modo **predeterminado** (`trayectoria.modo`, `velocidad_pct_defecto`, `duracion_defecto`) es el que usan los tópicos y la acción cuando no dicen nada; en los tópicos el valor extra (`[ángulos..., x]` o `velocity[0]`) es % en modo velocidad y segundos en modo tiempo. La acción MoverA tiene `velocidad_pct` y `duracion_s` (si das `duracion_s > 0` gana). Se cambia en la interfaz ("Predeterminado", dentro de Mover) o con `ros2 param set /adrc_simple trayectoria.modo tiempo` y `trayectoria.duracion_defecto 2.0`; "Guardar ajustes" lo guarda.
+
+```yaml
+trayectoria:
+  modo: "velocidad"          # velocidad | tiempo
+  velocidad_pct_defecto: 50.0
+  duracion_defecto: 2.0      # [s]
+  duracion_max: 60.0         # [s]
+```
+
+Modo velocidad:
 
 - Rango 1 % a 200 %; 100 % = la mitad de la velocidad física (`factor_100pct: 0.5`).
 - La duración se calcula sola y todas las articulaciones llegan a la vez.
@@ -417,7 +434,7 @@ Reglas: números con punto decimal; espacios, no tabuladores; tras editar, relan
 
 ### 12.1.1 Guardar y restaurar desde la interfaz
 
-- **Guardar ganancias** (tarjeta de ganancias): escribe sintonía, β, calibración, límites, velocidad por defecto, conformador y supervisor en el archivo de ajustes de la plataforma. El control arrancará con esos valores. Se fusiona con lo que ya tenga el archivo (no borra los cambios de plataforma).
+- **Guardar ajustes** (tarjeta de ganancias): escribe sintonía, β, calibración, límites, modo de trayectoria predeterminado (y su % y duración), conformador y supervisor en el archivo de ajustes de la plataforma. El control arrancará con esos valores. Se fusiona con lo que ya tenga el archivo (no borra los cambios de plataforma).
 - **Volver a las guardadas**: descarta lo que cambiaste sin guardar y vuelve a lo último guardado, sin reiniciar el control ni mover el cero.
 - **Valores de fábrica**: carga las ganancias del perfil + plataforma (sin el archivo de ajustes). No borra lo guardado; si no te convencen, "Volver a las guardadas".
 - **Configuración de la plataforma** (tarjeta propia, desplegable): tópicos, QoS, tipo de mando, `signo`, encoder, `offset_absoluto`, `postura_encendido_urdf`, nombres y unidad. Se guardan en el mismo archivo de ajustes (no se toca `config/plataformas/*.yaml`) y se aplican al reiniciar el control: "Guardar (al próximo arranque)" o "Guardar y reiniciar el control" (exige el control deshabilitado). Antes de escribir se valida que la configuración resultante cargue.

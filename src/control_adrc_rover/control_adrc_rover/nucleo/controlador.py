@@ -173,6 +173,11 @@ class Controlador:
         self.pct_min = float(tr['velocidad_pct_min'])
         self.pct_defecto = float(np.clip(tr['velocidad_pct_defecto'],
                                          self.pct_min, self.pct_max))
+        # modo "velocidad": el usuario da un % (duración según distancia);
+        # modo "tiempo": el usuario da la duración en s (todas igual).
+        self.modo_tray = str(tr.get('modo', 'velocidad'))
+        self.duracion_defecto = float(tr.get('duracion_defecto', 2.0))
+        self.duracion_max = float(tr.get('duracion_max', 60.0))
         self.traj = TrayectoriaNonica(
             self.factor_100 * f('v_max_fisica'), f('a_max_100pct'),
             float(tr['duracion_minima']), f('jerk_max_100pct'))
@@ -405,10 +410,16 @@ class Controlador:
         return self.traj.estado_en(t)
 
     def planear(self, objetivo_usr: np.ndarray, pct: Optional[float] = None,
-                t: Optional[float] = None
+                t: Optional[float] = None, duracion: Optional[float] = None
                 ) -> Tuple[bool, str, Optional[TrayectoriaNonica]]:
         """Planea (sin aplicar) un movimiento a `objetivo_usr` [rad,
         coordenadas del usuario]; NaN = conservar el objetivo actual.
+
+        Modo velocidad (`pct`): la duración sale de la distancia y del %.
+        Modo tiempo (`duracion` [s]): todas las articulaciones tardan eso;
+        si los límites de velocidad/aceleración o de corriente no lo
+        permiten, se alarga y se avisa. Sin ninguno de los dos se usa el
+        modo y el valor por defecto (`modo_tray`).
 
         Returns:
             (ok, mensaje, trayectoria) — aplicar con aplicar_trayectoria().
@@ -427,11 +438,25 @@ class Controlador:
                 self.cfg.trayectoria['objetivo_fuera_de_rango'], self.nombres)
         except ValueError as exc:
             return False, str(exc), None
-        pct = self.pct_defecto if pct is None or np.isnan(pct) else float(pct)
-        pct_ok = float(np.clip(pct, self.pct_min, self.pct_max))
-        if pct_ok != pct:
-            avisos.append(f'velocidad {pct:.0f} % fuera de rango; uso '
-                          f'{pct_ok:.0f} %')
+        dada = lambda x: x is not None and not np.isnan(x) and x > 0.0  # noqa
+        por_tiempo = dada(duracion) or (not dada(pct)
+                                        and self.modo_tray == 'tiempo')
+        if por_tiempo:
+            pedida = float(duracion) if dada(duracion) else \
+                self.duracion_defecto
+            t_obj = float(np.clip(pedida, self.traj.t_min, self.duracion_max))
+            if abs(t_obj - pedida) > 1e-9:
+                avisos.append(f'duración {pedida:.2f} s fuera de '
+                              f'[{self.traj.t_min:.2f}, '
+                              f'{self.duracion_max:.0f}] s; uso {t_obj:.2f} s')
+            pct_ok = self.pct_max          # límite físico (v_max_fisica)
+        else:
+            pct = self.pct_defecto if not dada(pct) else float(pct)
+            pct_ok = float(np.clip(pct, self.pct_min, self.pct_max))
+            if pct_ok != pct:
+                avisos.append(f'velocidad {pct:.0f} % fuera de rango; uso '
+                              f'{pct_ok:.0f} %')
+            t_obj = 0.0
         q0, v0, a0, j0, s0 = self._estado_referencia(t)
         nueva = TrayectoriaNonica(self.traj.v_max, self.traj.a_max,
                                   self.traj.t_min, self.traj.j_max)
@@ -441,7 +466,11 @@ class Controlador:
                 self.shaper.frecuencia_hz,
                 float(self.cfg.shaper['ciclos_modo_min']))
         escala = pct_ok / 100.0
-        T = nueva.planear(t, q0, v0, a0, objetivo, escala, j0, s0, t_modo)
+        t_base = max(t_modo, t_obj)
+        T = nueva.planear(t, q0, v0, a0, objetivo, escala, j0, s0, t_base)
+        if por_tiempo and T > t_obj * 1.001:
+            avisos.append(f'pediste {t_obj:.2f} s, pero la velocidad o '
+                          f'aceleración máxima pide al menos {T:.2f} s')
         alargada = False
         if self.modelo is not None:
             for _ in range(5):
@@ -451,10 +480,11 @@ class Controlador:
                 if t_req <= T * 1.001:
                     break
                 T = nueva.planear(t, q0, v0, a0, objetivo, escala, j0, s0,
-                                  max(t_modo, t_req * 1.02))
+                                  max(t_base, t_req * 1.02))
                 alargada = True
+        modo = (f'en {t_obj:.2f} s' if por_tiempo else f'a {pct_ok:.0f} %')
         texto = (f'Objetivo {np.round(np.degrees(self.a_usuario(objetivo)), 2).tolist()}° '
-                 f'a {pct_ok:.0f} % (duración {T:.2f} s)')
+                 f'{modo} (duración {T:.2f} s)')
         if alargada:
             texto += ' — alargada para no exceder la corriente'
         if avisos:
@@ -511,10 +541,10 @@ class Controlador:
                      't_fin': tr.t0 + tr.duration + self.shaper.retardo,
                      'muestras': [], 'grabando': False}
 
-    def mover(self, objetivo_usr: np.ndarray, pct: Optional[float] = None
-              ) -> Tuple[bool, str]:
+    def mover(self, objetivo_usr: np.ndarray, pct: Optional[float] = None,
+              duracion: Optional[float] = None) -> Tuple[bool, str]:
         """planear() + aplicar_trayectoria() en un solo paso."""
-        ok, msg, tr = self.planear(objetivo_usr, pct)
+        ok, msg, tr = self.planear(objetivo_usr, pct, duracion=duracion)
         if ok:
             self.aplicar_trayectoria(tr)
         self.log(msg) if ok else self.aviso(msg)

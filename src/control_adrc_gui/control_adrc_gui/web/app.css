@@ -160,3 +160,17 @@ input[type=text] { background: var(--fondo); color: var(--texto); border: 1px so
   .paro { min-width: 110px; height: 54px; font-size: 20px; }
 }
 #tabla-plataforma input[type=number] { width: 92px; }
+
+/* ---------- modo de movimiento ---------- */
+.m-velocidad, .m-tiempo { display: none; }
+.modo-velocidad .m-velocidad, .modo-tiempo .m-tiempo { display: inline-flex; }
+.nota.sin-margen { margin: 0; }
+details.sub { margin-top: 10px; border-top: 1px solid var(--rejilla); padding-top: 6px; }
+
+/* ---------- tarjetas plegables ---------- */
+.cabecera h2.plegable { cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 6px; }
+.cabecera h2.plegable::before { content: "▾"; color: var(--tenue); font-size: 12px; transition: transform .15s; }
+.tarjeta.plegada .cabecera h2.plegable::before { transform: rotate(-90deg); }
+.tarjeta.plegada > :not(.cabecera), .tarjeta.plegada .cabecera > :not(h2) { display: none !important; }
+.tarjeta.plegada .cabecera { margin-bottom: 0; }
+.tarjeta.plegada { align-self: start; }

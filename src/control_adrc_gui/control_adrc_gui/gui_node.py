@@ -238,6 +238,8 @@ class NodoGui(Node):
             'saturaciones': list(m.saturaciones),
             'saturado': list(m.saturado),
             'velocidad_pct_defecto': m.velocidad_pct_defecto,
+            'modo_trayectoria': m.modo_trayectoria,
+            'duracion_defecto': m.duracion_defecto,
             'shaper': {'tipo': m.shaper_tipo,
                        'frecuencia_hz': m.shaper_frecuencia_hz,
                        'amortiguamiento': m.shaper_amortiguamiento},
@@ -375,6 +377,7 @@ class NodoGui(Node):
         goal.posiciones_deg = [float('nan') if v is None else float(v)
                                for v in posiciones.values()]
         goal.velocidad_pct = float(d.get('velocidad_pct') or 0.0)
+        goal.duracion_s = float(d.get('duracion_s') or 0.0)
         fut = self.acc_mover.send_goal_async(goal)
         t0 = time.monotonic()
         while not fut.done():

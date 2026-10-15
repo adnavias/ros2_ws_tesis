@@ -129,6 +129,9 @@ lazo:
 trayectoria:
   factor_100pct: 0.5             # 100 % = 0.5 * v_max_fisica
   velocidad_pct_defecto: 50.0
+  modo: "velocidad"              # velocidad (%) | tiempo (todas tardan duracion_defecto)
+  duracion_defecto: 2.0          # [s] modo tiempo
+  duracion_max: 60.0             # [s]
   velocidad_pct_min: 1.0
   duracion_minima: 0.5           # [s]
   objetivo_fuera_de_rango: "recortar"   # recortar | rechazar

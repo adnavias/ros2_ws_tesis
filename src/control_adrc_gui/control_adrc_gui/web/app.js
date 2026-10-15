@@ -229,6 +229,10 @@ function actualizar(e) {
   if (libre('chk-calibracion')) $('chk-calibracion').checked = !!e.modo_calibracion;
   if (libre('chk-supervisor')) $('chk-supervisor').checked = !!e.supervisor_habilitado;
   fijarSiLibre('in-pct-def', e.velocidad_pct_defecto, 0);
+  fijarSiLibre('in-dur-def', e.duracion_defecto, 2);
+  if (e.modo_trayectoria && !S.sucias.has('def-modo') && libre('def-modo')) $('def-modo').value = e.modo_trayectoria;
+  if (S.modoMovAuto && e.modo_trayectoria) { S.modoMovAuto = false; fijarModoMov(e.modo_trayectoria, false); }
+  if (!S.durIni && e.duracion_defecto) { S.durIni = true; if (!S.sucias.has('in-dur')) $('in-dur').value = numTexto(e.duracion_defecto, 2); }
   if (e.shaper) { if (!S.sucias.has('sh-tipo') && libre('sh-tipo')) $('sh-tipo').value = e.shaper.tipo;
     fijarSiLibre('sh-f', e.shaper.frecuencia_hz, 3); fijarSiLibre('sh-z', e.shaper.amortiguamiento, 3); }
 
@@ -279,13 +283,47 @@ function actualizar(e) {
 function moverUna(n) {
   const v = $(`obj-${n}`).value;
   if (v === '') { toast('Escribe el objetivo de ' + n, true); return; }
-  comando('mover', { posiciones_deg: { [n]: Number(v) }, velocidad_pct: Number($('in-pct').value) });
+  comando('mover', Object.assign({ posiciones_deg: { [n]: Number(v) } }, ritmo()));
 }
 function moverTodas() {
   const pos = {};
   for (const n of S.estado.nombres) { const v = $(`obj-${n}`).value; if (v !== '') pos[n] = Number(v); }
   if (!Object.keys(pos).length) { toast('No hay objetivos escritos', true); return; }
-  comando('mover', { posiciones_deg: pos, velocidad_pct: Number($('in-pct').value) });
+  comando('mover', Object.assign({ posiciones_deg: pos }, ritmo()));
+}
+// Lo que se manda con cada movimiento según la pestaña: % o segundos.
+function ritmo() {
+  return S.modoMov === 'tiempo' ? { duracion_s: Number($('in-dur').value) }
+    : { velocidad_pct: Number($('in-pct').value) };
+}
+function fijarModoMov(m, recordar = true) {
+  S.modoMov = m;
+  if (recordar) { try { localStorage.setItem('modo-mover', m); } catch (err) { /* sin almacenamiento */ } }
+  const t = $('pest-mover').closest('section');
+  t.classList.remove('modo-velocidad', 'modo-tiempo'); t.classList.add(`modo-${m}`);
+  for (const b of document.querySelectorAll('#pest-mover .pestana')) {
+    const on = b.dataset.modo === m; b.classList.toggle('activa', on); b.setAttribute('aria-selected', on);
+  }
+}
+// Cualquier tarjeta se pliega con un clic en su título (se recuerda).
+const PLEGADAS_DEFECTO = ['Conformador (base elástica)', 'Autotuning', 'Configuración de la plataforma'];
+function prepararPlegables() {
+  let guardado = null;
+  try { guardado = JSON.parse(localStorage.getItem('plegadas') || 'null'); } catch (err) { /* sin almacenamiento */ }
+  const plegadas = new Set(guardado || PLEGADAS_DEFECTO);
+  for (const sec of document.querySelectorAll('section.tarjeta')) {
+    const h = sec.querySelector('.cabecera h2'); if (!h) continue;
+    const clave = h.firstChild.textContent.trim();
+    h.classList.add('plegable'); h.title = 'Clic para plegar o desplegar';
+    sec.classList.toggle('plegada', plegadas.has(clave));
+    h.addEventListener('click', (ev) => {
+      if (ev.target.closest('.insignia')) return;
+      sec.classList.toggle('plegada');
+      sec.classList.contains('plegada') ? plegadas.add(clave) : plegadas.delete(clave);
+      try { localStorage.setItem('plegadas', JSON.stringify([...plegadas])); } catch (err) { /* sin almacenamiento */ }
+      if (!sec.classList.contains('plegada')) window.dispatchEvent(new Event('resize'));
+    });
+  }
 }
 // Pestañas: "polos" y "zeta" eligen con qué se programa la sintonía; "cal"
 // muestra β, α, armadura, α_g, fricción y límite. Cada pestaña aplica sólo
@@ -428,7 +466,7 @@ function enlazar() {
   $('btn-mover').onclick = moverTodas;
   $('btn-cero').onclick = () => {
     const pos = {}; S.estado.nombres.forEach((n) => { pos[n] = 0; });
-    comando('mover', { posiciones_deg: pos, velocidad_pct: Number($('in-pct').value) });
+    comando('mover', Object.assign({ posiciones_deg: pos }, ritmo()));
   };
   $('btn-copiar').onclick = () => S.estado.nombres.forEach((n, k) => { $(`obj-${n}`).value = fmt(S.estado.posicion_deg[k]); });
   $('btn-cancelar-mov').onclick = () => comando('cancelar_movimiento');
@@ -437,10 +475,21 @@ function enlazar() {
     comando('perfil', { brazo: $('sel-brazo').value === S.estado.brazo ? '' : $('sel-brazo').value, montadas: 0, estados: estadosTexto() });
     S.clave = '';
   };
-  $('btn-pct-def').onclick = async () => {
-    const r = await comando('parametros', { parametros: { velocidad_pct_defecto: Number($('in-pct-def').value) } });
-    if (r.ok) S.sucias.delete('in-pct-def');
+  $('btn-tray-def').onclick = async () => {
+    const r = await comando('parametros', { parametros: {
+      'trayectoria.modo': $('def-modo').value,
+      velocidad_pct_defecto: Number($('in-pct-def').value),
+      'trayectoria.duracion_defecto': Number($('in-dur-def').value) } });
+    if (r.ok) limpiarSucias(['in-pct-def', 'in-dur-def', 'def-modo']);
   };
+  let modoGuardado = null;
+  try { modoGuardado = localStorage.getItem('modo-mover'); } catch (err) { /* sin almacenamiento */ }
+  // Sin preferencia guardada, la pestaña sigue al modo predeterminado del control.
+  if (['velocidad', 'tiempo'].includes(modoGuardado)) fijarModoMov(modoGuardado, false);
+  else { fijarModoMov('velocidad', false); S.modoMovAuto = true; }
+  for (const b of document.querySelectorAll('#pest-mover .pestana')) b.onclick = () => fijarModoMov(b.dataset.modo);
+  for (const i of ['in-pct', 'in-dur']) $(i).addEventListener('input', () => S.sucias.add(i));
+  prepararPlegables();
   $('chk-supervisor').onchange = (ev) => comando('parametros', { parametros: { 'supervisor.habilitado': ev.target.checked } });
   $('btn-shaper').onclick = async () => {
     const r = await comando('parametros', { parametros: {
@@ -448,7 +497,7 @@ function enlazar() {
       'shaper.amortiguamiento': Number($('sh-z').value) } });
     if (r.ok) ['sh-tipo', 'sh-f', 'sh-z'].forEach((i) => S.sucias.delete(i));
   };
-  for (const i of ['sh-tipo', 'sh-f', 'sh-z', 'in-pct-def']) $(i).addEventListener('input', () => S.sucias.add(i));
+  for (const i of ['sh-tipo', 'sh-f', 'sh-z', 'in-pct-def', 'in-dur-def', 'def-modo']) $(i).addEventListener('input', () => S.sucias.add(i));
   $('btn-modo').onclick = async () => { const r = await comando('estimar_modo'); $('salida-modo').textContent = r.mensaje || ''; };
   $('btn-autotune').onclick = () => {
     const arts = S.estado.nombres.filter((n) => $(`at-${n}`) && $(`at-${n}`).checked);
@@ -465,12 +514,12 @@ function enlazar() {
   $('btn-restaurar').onclick = async () => {
     if (!confirm('¿Descartar los cambios sin guardar y volver a las últimas ganancias guardadas?')) return;
     const r = await comando('restaurar_guardadas');
-    if (r.ok) limpiarSucias(['pol-', 'zt-', 'gan-', 'in-pct-def', 'sh-']);
+    if (r.ok) limpiarSucias(['pol-', 'zt-', 'gan-', 'in-pct-def', 'in-dur-def', 'def-modo', 'sh-']);
   };
   $('btn-fabrica').onclick = async () => {
     if (!confirm('¿Cargar los valores de fábrica (perfil + plataforma)? No se borra lo guardado: si no te gustan, usa "Volver a las guardadas".')) return;
     const r = await comando('restaurar_fabrica');
-    if (r.ok) limpiarSucias(['pol-', 'zt-', 'gan-', 'in-pct-def', 'sh-']);
+    if (r.ok) limpiarSucias(['pol-', 'zt-', 'gan-', 'in-pct-def', 'in-dur-def', 'def-modo', 'sh-']);
   };
   $('btn-plat-recargar').onclick = () => leerConfig();
   $('btn-plat-guardar').onclick = () => guardarPlataforma(false);

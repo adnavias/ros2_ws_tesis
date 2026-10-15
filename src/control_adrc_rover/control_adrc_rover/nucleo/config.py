@@ -46,6 +46,7 @@ from .gpi import MODOS_SINTONIA, Sintonia
 ESTADOS = ('activa', 'bloqueada', 'ausente')
 MANDOS = ('corriente_con_modelo', 'torque_sin_modelo', 'posicion_directa')
 ENCODERS = ('incremental', 'absoluto')
+MODOS_TRAYECTORIA = ('velocidad', 'tiempo')
 TIPOS_MANDO_ROS = ('float64_por_articulacion', 'float64_multiarray',
                    'joint_state')
 SHAPERS = ('ninguno', 'zv', 'zvd', 'ei')
@@ -304,6 +305,9 @@ DEFAULTS_SECCIONES: Dict[str, Dict[str, Any]] = {
         'velocidad_pct_min': 1.0,
         'duracion_minima': 0.5,
         'objetivo_fuera_de_rango': 'recortar',
+        'modo': 'velocidad',          # velocidad (%) | tiempo (s)
+        'duracion_defecto': 2.0,      # [s] modo tiempo
+        'duracion_max': 60.0,         # [s] tope de lo que se puede pedir
     },
     'seguridad': {
         'watchdog_congelar': 0.02,
@@ -603,6 +607,12 @@ def validar(cfg: ConfigBrazo) -> None:
             'accion_error', 'seguridad')
     _elegir(cfg.lazo['referencia_objetivos'], REFERENCIAS,
             'referencia_objetivos', 'lazo')
+    _elegir(cfg.trayectoria['modo'], MODOS_TRAYECTORIA, 'modo', 'trayectoria')
+    dd = float(cfg.trayectoria['duracion_defecto'])
+    dmax = float(cfg.trayectoria['duracion_max'])
+    if not 0.0 < dd <= dmax:
+        raise ErrorConfig(f'trayectoria: debe cumplirse 0 < duracion_defecto '
+                          f'({dd}) <= duracion_max ({dmax})')
     _elegir(cfg.trayectoria['objetivo_fuera_de_rango'],
             ('recortar', 'rechazar'), 'objetivo_fuera_de_rango',
             'trayectoria')

@@ -48,6 +48,8 @@ uint32[] saturaciones        # contador
 bool[] saturado              # en este instante
 
 float64 velocidad_pct_defecto
+string modo_trayectoria      # velocidad | tiempo
+float64 duracion_defecto     # [s] modo tiempo
 bool supervisor_habilitado
 string shaper_tipo
 float64 shaper_frecuencia_hz
