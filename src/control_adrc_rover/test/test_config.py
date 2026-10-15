@@ -18,12 +18,24 @@ def test_perfil_sim_carga(cargar):
     assert cfg.articulacion('Joint_5').mando == 'posicion_directa'
 
 
-def test_real_incremental_por_defecto(cargar):
+def test_real_como_el_brazo_real(cargar):
     cfg = cargar('real')
-    assert all(a.encoder == 'incremental' for a in cfg.articulaciones)
-    assert cfg.articulacion('Joint_1').limite_mando == pytest.approx(2.5)
-    assert cfg.articulacion('Joint_2').postura_encendido_urdf == \
-        pytest.approx(-1.5707)
+    assert all(a.encoder == 'absoluto' for a in cfg.articulaciones)
+    j1, j2 = cfg.articulacion('Joint_1'), cfg.articulacion('Joint_2')
+    assert j1.signo == -1.0 and j1.limite_mando == pytest.approx(5.0)
+    assert j1.sintonia.modo == 'zeta' and j1.sintonia.wn == 0.5
+    assert j2.sintonia.eps == pytest.approx(0.2)
+    assert j2.limite_mando * j2.k_tau <= 27.0 + 1e-6
+    assert cfg.crudo['articulaciones']['Joint_2']['topico_mando'] == \
+        '/arm_teleop/joint2/current'
+    assert j2.postura_encendido_urdf == pytest.approx(-1.5707)
+
+
+def test_real_encoder_incremental_con_un_cambio(cargar):
+    cfg = cargar('real', extra={'articulaciones': {
+        'Joint_1': {'encoder': 'incremental'}}})
+    assert cfg.articulacion('Joint_1').encoder == 'incremental'
+    assert cfg.articulacion('Joint_2').encoder == 'absoluto'
 
 
 def test_montadas_1_deja_solo_j1(cargar):

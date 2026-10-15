@@ -1,8 +1,13 @@
 # =====================================================================
 # PLATAFORMA: ROBOT REAL (Jetson)
 #
-# Se aplica ENCIMA del perfil del brazo. Ajusta las líneas marcadas
-# "# <-- AJUSTAR" con lo que veas en la Jetson:
+# Valores tomados de la configuración con la que corre el brazo real
+# (params_adan_now.yaml, formato viejo de adrc_simple). Se aplica ENCIMA
+# del perfil del brazo (config/brazos/principal.yaml). Lo que se guarde
+# desde la interfaz va a config/ajustes/principal_real.yaml, encima de
+# este archivo.
+#
+# Para revisar en la Jetson:
 #   ros2 topic list
 #   ros2 topic info -v <tópico>          (tipo y QoS)
 #   ros2 topic echo --once <tópico>      (nombres de articulaciones)
@@ -11,64 +16,110 @@
 plataforma: real
 
 interfaz:
-  topico_estado: "/joint_states"                 # <-- AJUSTAR
-  qos_estado_best_effort: false                  # <-- AJUSTAR (micro-ROS: true)
-  tipo_mando: "float64_por_articulacion"         # <-- AJUSTAR
-  patron_topico_mando: "/brazo/{articulacion}/cmd_actuador"   # <-- AJUSTAR
-  topico_mando_unico: "/brazo/cmd_actuador"      # <-- AJUSTAR (multiarray / joint_state)
+  topico_estado: "/joint_states"
+  qos_estado_best_effort: false
+  tipo_mando: "float64_por_articulacion"
+  # Cada articulación tiene su tópico (topico_mando, abajo); este patrón
+  # sólo se usa si alguna no lo trae.
+  patron_topico_mando: "/arm_teleop/{articulacion}/current"
+  topico_mando_unico: "/arm_teleop/cmd_actuador"
   topico_objetivo_deg: "/brazo/objetivo_deg"
   topico_objetivo_nombres_deg: "/brazo/objetivo_nombres_deg"
   topico_objetivo_rad: "/target_joint_states"
   topico_heartbeat: "/brazo/interfaz/heartbeat"
   topico_imu: ""                                 # p. ej. "/imu_data" cuando haya IMU
-  # Si el driver no llena header.stamp, se usa la hora de llegada.
-  usar_stamp_medicion: true
+  usar_stamp_medicion: true                      # si el driver no llena el stamp, usa la hora de llegada
 
 # ---------------------------------------------------------------------
-# ENCODERS. Por defecto INCREMENTALES: leen 0 al encender y el modelo usa
-#   q_urdf = signo * q_medida + postura_encendido_urdf
-# (la postura física al encender está en el perfil del brazo). Para un
-# encoder ABSOLUTO cambia `encoder` de esa articulación a "absoluto" y, si
-# su cero no coincide con el del URDF, pon `offset_absoluto` [rad]:
+# ENCODERS. En el robot real la medición YA llega en la convención del
+# URDF (antes: medicion_absoluta: true), así que se usan como ABSOLUTOS:
 #   q_urdf = signo * q_medida + offset_absoluto
+# Si algún encoder vuelve a ser incremental (lee 0 al encender), cambia
+# su `encoder` a "incremental": entonces se usa
+#   q_urdf = signo * q_medida + postura_encendido_urdf   (del perfil).
+# Los objetivos siguen siendo relativos a la postura de arranque
+# (antes: cero_desde_primera_medicion: true).
 # ---------------------------------------------------------------------
 por_defecto:
-  encoder: "incremental"                         # <-- AJUSTAR por articulación
+  encoder: "absoluto"
+  offset_absoluto: 0.0
   signo: 1.0
+  # Ganancias del GPI con que corre el robot real: p(s) =
+  # (s²+2ζ wn s+wn²)(s²+2ζ (wn/eps) s+(wn/eps)²), ver la guía, 13.1.
+  sintonia: "zeta"
+  zeta: 1.0
 
 articulaciones:
-  Joint_1:
-    signo: 1.0                                   # <-- AJUSTAR (-1.0 si gira al revés)
-    nombre_en_estado: "Joint_1"                  # <-- AJUSTAR (nombre en el JointState)
-    nombre_en_mando: "Joint_1"                   # <-- AJUSTAR
-    limite_mando: 2.5                            # [A] Yellow Jacket (seguro)
-    # encoder: "absoluto"
-    # offset_absoluto: 0.0
-  Joint_2:
-    signo: 1.0                                   # <-- AJUSTAR
-    nombre_en_estado: "Joint_2"                  # <-- AJUSTAR
-    nombre_en_mando: "Joint_2"                   # <-- AJUSTAR
-  Joint_3:
-    signo: 1.0                                   # <-- AJUSTAR
-    nombre_en_estado: "Joint_3"                  # <-- AJUSTAR
-    nombre_en_mando: "Joint_3"                   # <-- AJUSTAR
-  Joint_4:
-    signo: 1.0                                   # <-- AJUSTAR
-    nombre_en_estado: "Joint_4"                  # <-- AJUSTAR
-    nombre_en_mando: "Joint_4"                   # <-- AJUSTAR
+  Joint_1:                                       # base (Yellow Jacket)
+    signo: -1.0                                  # gira al revés que el URDF
+    nombre_en_estado: "Joint_1"
+    nombre_en_mando: "Joint_1"
+    topico_mando: "/arm_teleop/joint1/current"
+    k_tau: 3.75                                  # [N·m/A] (antes k_tau_hat)
+    limite_mando: 5.0                            # [A] OJO: 54 % de la corriente de bloqueo
+    inercia_constante: 1.5                       # [kg m^2] sólo sin modelo
+    wn: 0.5
+    eps: 0.5
+  Joint_2:                                       # hombro (Maxon)
+    nombre_en_estado: "Joint_2"
+    nombre_en_mando: "Joint_2"
+    topico_mando: "/arm_teleop/joint2/current"
+    k_tau: 3.94
+    # Antes 7.35 A: con K_tau 3.94 son 29 N·m y el reductor aguanta 27 N·m
+    # continuos; el máximo permitido es 27/3.94 = 6.85 A.
+    limite_mando: 6.85
+    inercia_constante: 2.0
+    wn: 1.0
+    eps: 0.2
+  Joint_3:                                       # codo (Maxon)
+    nombre_en_estado: "Joint_3"
+    nombre_en_mando: "Joint_3"
+    topico_mando: "/arm_teleop/joint3/current"
+    k_tau: 3.94
+    limite_mando: 6.85                           # antes 7.35 (ver Joint_2)
+    inercia_constante: 1.3
+    wn: 1.0
+    eps: 0.5
+  Joint_4:                                       # muñeca (Yellow Jacket)
+    nombre_en_estado: "Joint_4"
+    nombre_en_mando: "Joint_4"
+    topico_mando: "/arm_teleop/joint4/current"
+    k_tau: 3.75
     limite_mando: 2.5
-  Joint_5:
-    nombre_en_mando: "Joint_5"                   # <-- AJUSTAR
-    unidad_posicion: "rad"                       # <-- AJUSTAR (rad | deg)
+    inercia_constante: 0.83
+    wn: 1.0
+    eps: 0.5
+  Joint_5:                                       # servo
+    # Se le manda la POSICIÓN (mando "posicion_directa" del perfil). En la
+    # configuración vieja recibía un par de hasta 2.0 N·m por este mismo
+    # tópico; revisa qué espera el driver antes de moverlo.
+    nombre_en_mando: "Joint_5"
+    topico_mando: "/arm_teleop/joint5/current"
+    unidad_posicion: "rad"
 
 lazo:
+  frecuencia_control: 200.0
   incluir_armadura: true      # el robot real sí tiene la inercia de los rotores
+  feedforward_gravedad: true
+  feedforward_aceleracion: true
+  margen_corriente_trayectoria: 0.9
+
+trayectoria:
+  factor_100pct: 0.5
+  velocidad_pct_defecto: 50.0
+  velocidad_pct_min: 1.0
+  duracion_minima: 0.5
 
 seguridad:
   watchdog_congelar: 0.02     # [s] (4 muestras a 200 Hz)
   watchdog_quitar: 0.10       # [s] corriente cero (falla)
   heartbeat_timeout: 0.5      # [s] sólo en modo calibración
   paro_accion: "sin_corriente"
+
+supervisor:
+  # Con wn de 0.5-1.0 rad/s el piso del supervisor (wn_min 2.0) ya está
+  # por encima: no bajaría nada. Se deja bajo para que sí pueda actuar.
+  wn_min: 0.3
 
 diagnostico:
   publicar: true
